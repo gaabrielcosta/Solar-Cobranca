@@ -85,33 +85,37 @@ export default function Faturas() {
   }
 
   async function gerarRelatorio() {
-  setLoadingRel(true)
-  setStatusRel('')
-  try {
-    const comp = `${relAno}-${relMes}-01`
-    const token = localStorage.getItem('token')
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    if (!res.ok) {
-      setStatusRel('Erro ao gerar relatório')
-      return
+    setLoadingRel(true)
+    setStatusRel('')
+    try {
+        const comp = `${relAno}-${relMes}-01`
+        const token = localStorage.getItem('token')
+        const endpoint = relUsina && relUsina !== 'all'
+        ? `/api/faturas/relatorio/${comp}?usina=${relUsina}`
+        : `/api/faturas/relatorio/${comp}`
+
+        const res = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${token}` }
+        })
+
+        if (!res.ok) {
+        setStatusRel('Erro ao gerar relatório')
+        return
+        }
+
+        const pdfBlob = await res.blob()
+        const pdfUrl = URL.createObjectURL(pdfBlob)
+        const a = document.createElement('a')
+        a.href = pdfUrl
+        a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
+        a.click()
+        URL.revokeObjectURL(pdfUrl)
+        setStatusRel('Relatório gerado com sucesso')
+        setTimeout(() => setModalRelatorio(false), 1500)
+    } finally {
+        setLoadingRel(false)
     }
-    const blob = await res.blob()
-    const url = relUsina && relUsina !== 'all'
-      ? `/api/faturas/relatorio/${comp}?usina=${relUsina}`
-      : `/api/faturas/relatorio/${comp}`
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
-    a.click()
-    URL.revokeObjectURL(url)
-    setStatusRel('Relatório gerado com sucesso')
-    setTimeout(() => setModalRelatorio(false), 1500)
-  } finally {
-    setLoadingRel(false)
   }
-}
 
   useEffect(() => {
   carregar().finally(() => setLoading(false))

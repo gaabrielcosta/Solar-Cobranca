@@ -78,6 +78,17 @@ export default function Sidebar() {
             {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
         </TooltipContent>
         </Tooltip>
+        <Tooltip>
+        <TooltipTrigger asChild>
+            <button
+            onClick={sair}
+            className="w-10 h-10 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+            <LogOut size={20} />
+            </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Sair</TooltipContent>
+        </Tooltip>
     </aside>
   )
 }
