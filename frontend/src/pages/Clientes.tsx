@@ -15,6 +15,15 @@ interface Cliente {
   email: string
   cidade: string
   ativo: boolean
+  cpf_cnpj: string
+  cep: string
+  logradouro: string
+  numero: string
+  bairro: string
+  estado_endereco: string
+  uc_beneficiaria: string
+  dia_vencimento: number
+  desconto_percentual: number
 }
 
 interface NovoCliente {
@@ -46,6 +55,16 @@ export default function Clientes() {
     cidade: '', estado_endereco: '', uc_beneficiaria: '',
     dia_vencimento: '10', desconto_percentual: '0'
   })
+  const [modalEditar, setModalEditar] = useState(false)
+  const [clienteSelecionado, setClienteSelecionado] = useState<Cliente | null>(null)
+  const [formEditar, setFormEditar] = useState<NovoCliente>({
+    nome: '', telefone: '', email: '', cpf_cnpj: '',
+    cep: '', logradouro: '', numero: '', bairro: '',
+    cidade: '', estado_endereco: '', uc_beneficiaria: '',
+    dia_vencimento: '10', desconto_percentual: '0'
+  })
+  const [loadingEditar, setLoadingEditar] = useState(false)
+  const [erroEditar, setErroEditar] = useState('')
 
   async function carregar() {
     const r = await apiFetch<{ data: Cliente[] }>('/api/clientes')
@@ -91,6 +110,51 @@ export default function Clientes() {
     }
   }
 
+  function abrirEditar(c: Cliente) {
+  setClienteSelecionado(c)
+  setFormEditar({
+    nome: c.nome || '',
+    telefone: c.telefone || '',
+    email: c.email || '',
+    cpf_cnpj: c.cpf_cnpj || '',
+    cep: c.cep || '',
+    logradouro: c.logradouro || '',
+    numero: c.numero || '',
+    bairro: c.bairro || '',
+    cidade: c.cidade || '',
+    estado_endereco: c.estado_endereco || '',
+    uc_beneficiaria: c.uc_beneficiaria || '',
+    dia_vencimento: String(c.dia_vencimento || 10),
+    desconto_percentual: String(c.desconto_percentual || 0),
+  })
+  setErroEditar('')
+  setModalEditar(true)
+}
+
+async function salvarEdicao() {
+  if (!formEditar.nome || !formEditar.cpf_cnpj || !formEditar.telefone) {
+    setErroEditar('Nome, CPF/CNPJ e telefone são obrigatórios')
+    return
+  }
+  setLoadingEditar(true)
+  try {
+    await apiFetch(`/api/clientes/${clienteSelecionado?.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ...formEditar,
+        dia_vencimento: Number(formEditar.dia_vencimento),
+        desconto_percentual: Number(formEditar.desconto_percentual),
+      }),
+    })
+    setModalEditar(false)
+    await carregar()
+  } catch {
+    setErroEditar('Erro ao salvar alterações')
+  } finally {
+    setLoadingEditar(false)
+  }
+}
+
   const filtrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
     c.telefone?.includes(busca) ||
@@ -135,31 +199,32 @@ export default function Clientes() {
             </thead>
             <tbody>
               {filtrados.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="text-center py-12 text-muted-foreground">
-                    Nenhum cliente encontrado
-                  </td>
+            <tr>
+                <td colSpan={4} className="text-center py-12 text-muted-foreground">
+                Nenhum cliente encontrado
+                </td>
+            </tr>
+            ) : (
+            filtrados.map((c, i) => (
+                <tr
+                key={c.id}
+                onClick={() => abrirEditar(c)}
+                className={cn(
+                    'border-t border-border transition-colors hover:bg-muted/50 cursor-pointer',
+                    i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
+                )}
+                >
+                <td className="px-4 py-3 font-medium">{c.nome}</td>
+                <td className="px-4 py-3 text-muted-foreground">{c.telefone || '—'}</td>
+                <td className="px-4 py-3 text-muted-foreground">{c.cidade || '—'}</td>
+                <td className="px-4 py-3">
+                    <Badge variant={c.ativo ? 'default' : 'secondary'}>
+                    {c.ativo ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                </td>
                 </tr>
-              ) : (
-                filtrados.map((c, i) => (
-                  <tr
-                    key={c.id}
-                    className={cn(
-                      'border-t border-border transition-colors hover:bg-muted/50 cursor-pointer',
-                      i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
-                    )}
-                  >
-                    <td className="px-4 py-3 font-medium">{c.nome}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.telefone || '—'}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{c.cidade || '—'}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={c.ativo ? 'default' : 'secondary'}>
-                        {c.ativo ? 'Ativo' : 'Inativo'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))
-              )}
+            ))
+            )}  
             </tbody>
           </table>
         </div>
@@ -296,6 +361,128 @@ export default function Clientes() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={modalEditar} onOpenChange={setModalEditar}>
+        <DialogContent className="max-w-lg">
+            <DialogHeader>
+            <DialogTitle>Editar cliente</DialogTitle>
+            </DialogHeader>
+
+            <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+                <Label>Nome *</Label>
+                <Input
+                value={formEditar.nome}
+                onChange={e => setFormEditar(p => ({ ...p, nome: e.target.value }))}
+                />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                <Label>Telefone *</Label>
+                <Input
+                    value={formEditar.telefone}
+                    onChange={e => setFormEditar(p => ({ ...p, telefone: e.target.value }))}
+                />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                <Label>CPF/CNPJ *</Label>
+                <Input
+                    value={formEditar.cpf_cnpj}
+                    onChange={e => setFormEditar(p => ({ ...p, cpf_cnpj: e.target.value }))}
+                />
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+                <Label>Email</Label>
+                <Input
+                value={formEditar.email}
+                onChange={e => setFormEditar(p => ({ ...p, email: e.target.value }))}
+                />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+                <Label>UC Beneficiária</Label>
+                <Input
+                value={formEditar.uc_beneficiaria}
+                onChange={e => setFormEditar(p => ({ ...p, uc_beneficiaria: e.target.value }))}
+                />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5 col-span-2">
+                <Label>Logradouro</Label>
+                <Input
+                    value={formEditar.logradouro}
+                    onChange={e => setFormEditar(p => ({ ...p, logradouro: e.target.value }))}
+                />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                <Label>Número</Label>
+                <Input
+                    value={formEditar.numero}
+                    onChange={e => setFormEditar(p => ({ ...p, numero: e.target.value }))}
+                />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                <Label>Bairro</Label>
+                <Input
+                    value={formEditar.bairro}
+                    onChange={e => setFormEditar(p => ({ ...p, bairro: e.target.value }))}
+                />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                <Label>Cidade</Label>
+                <Input
+                    value={formEditar.cidade}
+                    onChange={e => setFormEditar(p => ({ ...p, cidade: e.target.value }))}
+                />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                <Label>UF</Label>
+                <Input
+                    maxLength={2}
+                    value={formEditar.estado_endereco}
+                    onChange={e => setFormEditar(p => ({ ...p, estado_endereco: e.target.value.toUpperCase() }))}
+                />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                <Label>Dia de vencimento</Label>
+                <Input
+                    type="number" min={1} max={28}
+                    value={formEditar.dia_vencimento}
+                    onChange={e => setFormEditar(p => ({ ...p, dia_vencimento: e.target.value }))}
+                />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                <Label>Desconto (%)</Label>
+                <Input
+                    type="number" min={0} max={100}
+                    value={formEditar.desconto_percentual}
+                    onChange={e => setFormEditar(p => ({ ...p, desconto_percentual: e.target.value }))}
+                />
+                </div>
+            </div>
+
+            {erroEditar && <p className="text-sm text-destructive">{erroEditar}</p>}
+            </div>
+
+            <DialogFooter>
+            <Button variant="outline" onClick={() => setModalEditar(false)}>
+                Cancelar
+            </Button>
+            <Button onClick={salvarEdicao} disabled={loadingEditar}>
+                {loadingEditar ? 'Salvando...' : 'Salvar alterações'}
+            </Button>
+            </DialogFooter>
+        </DialogContent>
+        </Dialog>
     </div>
   )
 }
