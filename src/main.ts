@@ -43,7 +43,7 @@ app.use((req, res, next) => {
 //    JWT_EXPIRES_IN=8h
 // ─────────────────────────────────────────────
 
-const JWT_SECRET  = process.env.JWT_SECRET  || 'solar_secret_mude_isso';
+const JWT_SECRET = process.env.JWT_SECRET || 'solar_secret_mude_isso';
 const JWT_EXPIRES = process.env.JWT_EXPIRES_IN || '8h';
 
 function parseDuration(d: string): number {
