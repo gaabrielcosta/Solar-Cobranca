@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 import { Search, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/hooks/useApi'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 
 interface Cliente {
   id: string
@@ -15,16 +17,79 @@ interface Cliente {
   ativo: boolean
 }
 
+interface NovoCliente {
+  nome: string
+  telefone: string
+  email: string
+  cpf_cnpj: string
+  cep: string
+  logradouro: string
+  numero: string
+  bairro: string
+  cidade: string
+  estado_endereco: string
+  uc_beneficiaria: string
+  dia_vencimento: string
+  desconto_percentual: string
+}
+
 export default function Clientes() {
   const [clientes, setClientes] = useState<Cliente[]>([])
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
+  const [modalNovo, setModalNovo] = useState(false)
+  const [loadingSalvar, setLoadingSalvar] = useState(false)
+  const [erro, setErro] = useState('')
+  const [form, setForm] = useState({
+    nome: '', telefone: '', email: '', cpf_cnpj: '',
+    cep: '', logradouro: '', numero: '', bairro: '',
+    cidade: '', estado_endereco: '', uc_beneficiaria: '',
+    dia_vencimento: '10', desconto_percentual: '0'
+  })
+
+  async function carregar() {
+    const r = await apiFetch<{ data: Cliente[] }>('/api/clientes')
+    setClientes(r.data || [])
+  }
 
   useEffect(() => {
-    apiFetch<{ data: Cliente[] }>('/api/clientes')
-      .then(r => setClientes(r.data || []))
-      .finally(() => setLoading(false))
+    carregar().finally(() => setLoading(false))
   }, [])
+
+  function atualizarForm(campo: keyof NovoCliente, valor: string) {
+    setForm(prev => ({ ...prev, [campo]: valor }))
+  }
+
+  async function salvarCliente() {
+    if (!form.nome || !form.cpf_cnpj || !form.telefone) {
+      setErro('Nome, CPF/CNPJ e telefone são obrigatórios')
+      return
+    }
+    setErro('')
+    setLoadingSalvar(true)
+    try {
+      await apiFetch('/api/clientes', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...form,
+          dia_vencimento: Number(form.dia_vencimento),
+          desconto_percentual: Number(form.desconto_percentual),
+        }),
+      })
+      setModalNovo(false)
+      setForm({
+        nome: '', telefone: '', email: '', cpf_cnpj: '',
+        cep: '', logradouro: '', numero: '', bairro: '',
+        cidade: '', estado_endereco: '', uc_beneficiaria: '',
+        dia_vencimento: '10', desconto_percentual: '0'
+      })
+      await carregar()
+    } catch {
+      setErro('Erro ao salvar cliente')
+    } finally {
+      setLoadingSalvar(false)
+    }
+  }
 
   const filtrados = clientes.filter(c =>
     c.nome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -39,7 +104,7 @@ export default function Clientes() {
           <h1 className="text-2xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground text-sm mt-1">{clientes.length} clientes cadastrados</p>
         </div>
-        <Button>
+        <Button onClick={() => setModalNovo(true)}>
           <UserPlus size={16} />
           Novo cliente
         </Button>
@@ -99,6 +164,138 @@ export default function Clientes() {
           </table>
         </div>
       )}
+
+      <Dialog open={modalNovo} onOpenChange={setModalNovo}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Novo cliente</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Nome *</Label>
+              <Input
+                placeholder="Nome completo"
+                value={form.nome}
+                onChange={e => atualizarForm('nome', e.target.value)}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+                <Label>Telefone *</Label>
+                <Input
+                placeholder="(67) 99999-9999"
+                value={form.telefone}
+                onChange={e => atualizarForm('telefone', e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <Label>CPF/CNPJ *</Label>
+                <Input
+                placeholder="000.000.000-00"
+                value={form.cpf_cnpj}
+                onChange={e => atualizarForm('cpf_cnpj', e.target.value)}
+                />
+            </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+            <Label>Email</Label>
+            <Input
+                placeholder="email@exemplo.com"
+                value={form.email}
+                onChange={e => atualizarForm('email', e.target.value)}
+            />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+            <Label>UC Beneficiária</Label>
+            <Input
+                placeholder="3647072"
+                value={form.uc_beneficiaria}
+                onChange={e => atualizarForm('uc_beneficiaria', e.target.value)}
+            />
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+            <div className="flex flex-col gap-1.5 col-span-2">
+                <Label>Logradouro</Label>
+                <Input
+                placeholder="Rua, Av..."
+                value={form.logradouro}
+                onChange={e => atualizarForm('logradouro', e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <Label>Número</Label>
+                <Input
+                placeholder="123"
+                value={form.numero}
+                onChange={e => atualizarForm('numero', e.target.value)}
+                />
+            </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+            <div className="flex flex-col gap-1.5">
+                <Label>Bairro</Label>
+                <Input
+                value={form.bairro}
+                onChange={e => atualizarForm('bairro', e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <Label>Cidade</Label>
+                <Input
+                placeholder="Bataguassu"
+                value={form.cidade}
+                onChange={e => atualizarForm('cidade', e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <Label>UF</Label>
+                <Input
+                placeholder="MS"
+                maxLength={2}
+                value={form.estado_endereco}
+                onChange={e => atualizarForm('estado_endereco', e.target.value.toUpperCase())}
+                />
+            </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+                <Label>Dia de vencimento</Label>
+                <Input
+                type="number" min={1} max={28}
+                value={form.dia_vencimento}
+                onChange={e => atualizarForm('dia_vencimento', e.target.value)}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <Label>Desconto (%)</Label>
+                <Input
+                type="number" min={0} max={100}
+                value={form.desconto_percentual}
+                onChange={e => atualizarForm('desconto_percentual', e.target.value)}
+                />
+            </div>
+            </div>
+
+            {erro && <p className="text-sm text-destructive">{erro}</p>}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalNovo(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={salvarCliente} disabled={loadingSalvar}>
+              {loadingSalvar ? 'Salvando...' : 'Salvar cliente'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
