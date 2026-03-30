@@ -13,3 +13,4 @@ texto_fatura.json
 curl
 psql
 console.log*
+src/__tests__/fixtures/*.pdf
