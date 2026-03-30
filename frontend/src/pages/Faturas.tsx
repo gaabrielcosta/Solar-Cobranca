@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 import { apiFetch } from '@/hooks/useApi'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Download } from 'lucide-react'
 
 interface Fatura {
   id: string
@@ -54,6 +55,13 @@ export default function Faturas() {
   const [faturaSelecionada, setFaturaSelecionada] = useState<Fatura | null>(null)
   const [formaPagamento, setFormaPagamento] = useState('pix')
   const [loadingPagar, setLoadingPagar] = useState(false)
+  const [modalRelatorio, setModalRelatorio] = useState(false)
+  const [relMes, setRelMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
+  const [relAno, setRelAno] = useState(String(new Date().getFullYear()))
+  const [loadingRel, setLoadingRel] = useState(false)
+  const [statusRel, setStatusRel] = useState('')
+  const [usinas, setUsinas] = useState<{ id: string; nome: string }[]>([])
+  const [relUsina, setRelUsina] = useState('all')
 
   async function carregar() {
     const r = await apiFetch<{ data: Fatura[] }>('/api/faturas')
@@ -76,9 +84,40 @@ export default function Faturas() {
     }
   }
 
+  async function gerarRelatorio() {
+  setLoadingRel(true)
+  setStatusRel('')
+  try {
+    const comp = `${relAno}-${relMes}-01`
+    const token = localStorage.getItem('token')
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    if (!res.ok) {
+      setStatusRel('Erro ao gerar relatório')
+      return
+    }
+    const blob = await res.blob()
+    const url = relUsina && relUsina !== 'all'
+      ? `/api/faturas/relatorio/${comp}?usina=${relUsina}`
+      : `/api/faturas/relatorio/${comp}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    setStatusRel('Relatório gerado com sucesso')
+    setTimeout(() => setModalRelatorio(false), 1500)
+  } finally {
+    setLoadingRel(false)
+  }
+}
+
   useEffect(() => {
-    carregar().finally(() => setLoading(false))
-  }, [])
+  carregar().finally(() => setLoading(false))
+  apiFetch<{ data: { id: string; nome: string }[] }>('/api/usinas')
+    .then(r => setUsinas(r.data || []))
+}, [])
 
   const filtradas = faturas.filter(f => {
     const nome = f.beneficiario?.cliente?.nome?.toLowerCase() || ''
@@ -94,10 +133,16 @@ export default function Faturas() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Faturas</h1>
-        <p className="text-muted-foreground text-sm mt-1">{total} faturas no total</p>
-      </div>
+      <div className="flex items-center justify-between">
+        <div>
+            <h1 className="text-2xl font-semibold">Faturas</h1>
+            <p className="text-muted-foreground text-sm mt-1">{total} faturas no total</p>
+        </div>
+        <Button variant="outline" onClick={() => setModalRelatorio(true)}>
+            <Download size={16} />
+            Relatório PDF
+        </Button>
+        </div>
 
       <div className="grid grid-cols-4 gap-4">
         {[
@@ -218,6 +263,62 @@ export default function Faturas() {
             </Button>
             <Button onClick={marcarPaga} disabled={loadingPagar}>
               {loadingPagar ? 'Salvando...' : 'Confirmar pagamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={modalRelatorio} onOpenChange={setModalRelatorio}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gerar relatório PDF</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-sm font-medium">Mês</label>
+                <Select value={relMes} onValueChange={setRelMes}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(m => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <label className="text-sm font-medium">Ano</label>
+                <Select value={relAno} onValueChange={setRelAno}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i)).map(a => (
+                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label>Usina</label>
+                <Select value={relUsina} onValueChange={setRelUsina}>
+                    <SelectTrigger>
+                    <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="all">Todas as usinas</SelectItem>
+                    {usinas.map(u => (
+                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                    ))}
+                    </SelectContent>
+                </Select>
+                </div>
+            </div>
+            {statusRel && <p className="text-sm text-muted-foreground">{statusRel}</p>}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalRelatorio(false)}>Cancelar</Button>
+            <Button onClick={gerarRelatorio} disabled={loadingRel}>
+              {loadingRel ? 'Gerando...' : 'Gerar PDF'}
             </Button>
           </DialogFooter>
         </DialogContent>

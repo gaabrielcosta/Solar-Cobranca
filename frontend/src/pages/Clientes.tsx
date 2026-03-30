@@ -65,6 +65,8 @@ export default function Clientes() {
   })
   const [loadingEditar, setLoadingEditar] = useState(false)
   const [erroEditar, setErroEditar] = useState('')
+  const [modalExcluir, setModalExcluir] = useState(false)
+  const [loadingExcluir, setLoadingExcluir] = useState(false)
 
   async function carregar() {
     const r = await apiFetch<{ data: Cliente[] }>('/api/clientes')
@@ -107,6 +109,21 @@ export default function Clientes() {
       setErro('Erro ao salvar cliente')
     } finally {
       setLoadingSalvar(false)
+    }
+  }
+
+  async function excluirCliente() {
+    if (!clienteSelecionado) return
+    setLoadingExcluir(true)
+    try {
+        await apiFetch(`/api/clientes/${clienteSelecionado.id}`, {
+        method: 'DELETE',
+        })
+        setModalExcluir(false)
+        setModalEditar(false)
+        await carregar()
+    } finally {
+        setLoadingExcluir(false)
     }
   }
 
@@ -473,15 +490,41 @@ async function salvarEdicao() {
             {erroEditar && <p className="text-sm text-destructive">{erroEditar}</p>}
             </div>
 
-            <DialogFooter>
-            <Button variant="outline" onClick={() => setModalEditar(false)}>
-                Cancelar
-            </Button>
-            <Button onClick={salvarEdicao} disabled={loadingEditar}>
-                {loadingEditar ? 'Salvando...' : 'Salvar alterações'}
-            </Button>
+            <DialogFooter className="flex justify-between">
+                <Button
+                    variant="destructive"
+                    onClick={() => setModalExcluir(true)}
+                >
+                    Excluir cliente
+                </Button>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setModalEditar(false)}>
+                    Cancelar
+                    </Button>
+                    <Button onClick={salvarEdicao} disabled={loadingEditar}>
+                    {loadingEditar ? 'Salvando...' : 'Salvar alterações'}
+                    </Button>
+                </div>
             </DialogFooter>
         </DialogContent>
+        </Dialog>
+        <Dialog open={modalExcluir} onOpenChange={setModalExcluir}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                <DialogTitle>Excluir cliente</DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground">
+                Tem certeza que deseja desativar <span className="font-medium text-foreground">{clienteSelecionado?.nome}</span>? Esta ação não pode ser desfeita.
+                </p>
+                <DialogFooter>
+                <Button variant="outline" onClick={() => setModalExcluir(false)}>
+                    Cancelar
+                </Button>
+                <Button variant="destructive" onClick={excluirCliente} disabled={loadingExcluir}>
+                    {loadingExcluir ? 'Excluindo...' : 'Confirmar exclusão'}
+                </Button>
+                </DialogFooter>
+            </DialogContent>
         </Dialog>
     </div>
   )

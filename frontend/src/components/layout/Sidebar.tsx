@@ -6,16 +6,21 @@ import {
   Users,
   FileText,
   Sun,
+  Moon,
   Bot,
   ClipboardList,
   LogOut,
+  Upload, 
 } from 'lucide-react'
+import { useTheme } from '@/components/ThemeProvider'
+
 
 const itens = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
   { icon: Users,           label: 'Clientes',  path: '/clientes' },
   { icon: FileText,        label: 'Faturas',   path: '/faturas' },
   { icon: Sun,             label: 'Usinas',    path: '/usinas' },
+  { icon: Upload,          label: 'Upload',    path: '/upload' },
   { icon: Bot,             label: 'Bot',       path: '/bot' },
   { icon: ClipboardList,   label: 'Logs',      path: '/logs' },
 ]
@@ -23,6 +28,7 @@ const itens = [
 export default function Sidebar() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { theme, toggleTheme } = useTheme()
 
   function sair() {
     localStorage.removeItem('token')
@@ -61,15 +67,17 @@ export default function Sidebar() {
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            onClick={sair}
-            className="w-10 h-10 flex items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-          >
-            <LogOut size={20} />
-          </button>
+            <button
+            onClick={toggleTheme}
+            className="w-10 h-10 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+            {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
         </TooltipTrigger>
-        <TooltipContent side="right">Sair</TooltipContent>
-      </Tooltip>
+        <TooltipContent side="right">
+            {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
+        </TooltipContent>
+        </Tooltip>
     </aside>
   )
 }
