@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search } from 'lucide-react'
+import { Label } from '@/components/ui/label'
+import { Search, Download, Trash2, Edit, QrCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/hooks/useApi'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Download } from 'lucide-react'
 
 interface Fatura {
   id: string
@@ -16,6 +16,9 @@ interface Fatura {
   competencia: string
   data_vencimento: string
   kwh_alocado: number
+  tarifa_kwh: number
+  desconto_percentual: number
+  pix_copia_cola: string
   beneficiario?: {
     uc_beneficiaria: string
     cliente?: { nome: string }
@@ -30,6 +33,7 @@ const statusConfig: Record<string, { label: string; variant: 'default' | 'second
   enviada:   { label: 'Enviada',   variant: 'secondary' },
   negociada: { label: 'Negociada', variant: 'secondary' },
 }
+
 
 function fmtMoeda(v: number) {
   return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -49,23 +53,57 @@ function fmtComp(d: string) {
 
 export default function Faturas() {
   const [faturas, setFaturas] = useState<Fatura[]>([])
+  const [usinas, setUsinas] = useState<{ id: string; nome: string }[]>([])
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [filtroMes, setFiltroMes] = useState('all')
+  const [filtroAno, setFiltroAno] = useState('all')
+
+  // Modal pagar
   const [modalPagar, setModalPagar] = useState(false)
   const [faturaSelecionada, setFaturaSelecionada] = useState<Fatura | null>(null)
   const [formaPagamento, setFormaPagamento] = useState('pix')
   const [loadingPagar, setLoadingPagar] = useState(false)
+
+  // Modal editar valor
+  const [modalEditar, setModalEditar] = useState(false)
+  const [formEditar, setFormEditar] = useState({ valor: '', kwh_alocado: '', tarifa_kwh: '', desconto_percentual: '' })
+  const [loadingEditar, setLoadingEditar] = useState(false)
+
+  // Modal excluir
+  const [modalExcluir, setModalExcluir] = useState(false)
+  const [loadingExcluir, setLoadingExcluir] = useState(false)
+
+  // Modal PIX
+  const [modalPix, setModalPix] = useState(false)
+  const [pixCopied, setPixCopied] = useState(false)
+
+  // Modal relatório
   const [modalRelatorio, setModalRelatorio] = useState(false)
   const [relMes, setRelMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
   const [relAno, setRelAno] = useState(String(new Date().getFullYear()))
+  const [relUsina, setRelUsina] = useState('all')
   const [loadingRel, setLoadingRel] = useState(false)
   const [statusRel, setStatusRel] = useState('')
-  const [usinas, setUsinas] = useState<{ id: string; nome: string }[]>([])
-  const [relUsina, setRelUsina] = useState('all')
 
   async function carregar() {
     const r = await apiFetch<{ data: Fatura[] }>('/api/faturas')
     setFaturas(r.data || [])
+  }
+
+  useEffect(() => {
+    carregar().finally(() => setLoading(false))
+    apiFetch<{ data: { id: string; nome: string }[] }>('/api/usinas')
+      .then(r => setUsinas(r.data || []))
+  }, [])
+
+  function abrirFatura(f: Fatura) {
+    setFaturaSelecionada(f)
+    if (f.status !== 'paga') {
+      setFormaPagamento('pix')
+      setModalPagar(true)
+    }
   }
 
   async function marcarPaga() {
@@ -77,76 +115,187 @@ export default function Faturas() {
         body: JSON.stringify({ forma_pagamento: formaPagamento }),
       })
       setModalPagar(false)
-      setFaturaSelecionada(null)
       await carregar()
     } finally {
       setLoadingPagar(false)
     }
   }
 
+  function abrirEditar(f: Fatura, e: React.MouseEvent) {
+    e.stopPropagation()
+    setFaturaSelecionada(f)
+    setFormEditar({
+      valor: String(f.valor),
+      kwh_alocado: String(f.kwh_alocado),
+      tarifa_kwh: String(f.tarifa_kwh),
+      desconto_percentual: String(f.desconto_percentual),
+    })
+    setModalEditar(true)
+  }
+
+  async function salvarEdicao() {
+    if (!faturaSelecionada) return
+    setLoadingEditar(true)
+    try {
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}/valor`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          valor: Number(formEditar.valor),
+          kwh_alocado: Number(formEditar.kwh_alocado),
+          tarifa_kwh: Number(formEditar.tarifa_kwh),
+          desconto_percentual: Number(formEditar.desconto_percentual),
+        }),
+      })
+      setModalEditar(false)
+      await carregar()
+    } finally {
+      setLoadingEditar(false)
+    }
+  }
+
+  function abrirExcluir(f: Fatura, e: React.MouseEvent) {
+    e.stopPropagation()
+    setFaturaSelecionada(f)
+    setModalExcluir(true)
+  }
+
+  async function excluirFatura() {
+    if (!faturaSelecionada) return
+    setLoadingExcluir(true)
+    try {
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}`, { method: 'DELETE' })
+      setModalExcluir(false)
+      await carregar()
+    } finally {
+      setLoadingExcluir(false)
+    }
+  }
+
+  function abrirPix(f: Fatura, e: React.MouseEvent) {
+    e.stopPropagation()
+    setFaturaSelecionada(f)
+    setPixCopied(false)
+    setModalPix(true)
+  }
+
+  function copiarPix() {
+    if (!faturaSelecionada?.pix_copia_cola) return
+    navigator.clipboard.writeText(faturaSelecionada.pix_copia_cola)
+    setPixCopied(true)
+    setTimeout(() => setPixCopied(false), 2000)
+  }
+
   async function gerarRelatorio() {
     setLoadingRel(true)
     setStatusRel('')
     try {
-        const comp = `${relAno}-${relMes}-01`
-        const token = localStorage.getItem('token')
-        const endpoint = relUsina && relUsina !== 'all'
+      const comp = `${relAno}-${relMes}-01`
+      const token = localStorage.getItem('token')
+      const endpoint = relUsina && relUsina !== 'all'
         ? `/api/faturas/relatorio/${comp}?usina=${relUsina}`
         : `/api/faturas/relatorio/${comp}`
 
-        const res = await fetch(endpoint, {
+      const res = await fetch(endpoint, {
         headers: { Authorization: `Bearer ${token}` }
-        })
+      })
 
-        if (!res.ok) {
+      if (!res.ok) {
         setStatusRel('Erro ao gerar relatório')
         return
-        }
+      }
 
-        const pdfBlob = await res.blob()
-        const pdfUrl = URL.createObjectURL(pdfBlob)
-        const a = document.createElement('a')
-        a.href = pdfUrl
-        a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
-        a.click()
-        URL.revokeObjectURL(pdfUrl)
-        setStatusRel('Relatório gerado com sucesso')
-        setTimeout(() => setModalRelatorio(false), 1500)
+      const pdfBlob = await res.blob()
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      const a = document.createElement('a')
+      a.href = pdfUrl
+      a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
+      a.click()
+      URL.revokeObjectURL(pdfUrl)
+      setStatusRel('Relatório gerado com sucesso')
+      setTimeout(() => setModalRelatorio(false), 1500)
     } finally {
-        setLoadingRel(false)
+      setLoadingRel(false)
     }
   }
 
-  useEffect(() => {
-  carregar().finally(() => setLoading(false))
-  apiFetch<{ data: { id: string; nome: string }[] }>('/api/usinas')
-    .then(r => setUsinas(r.data || []))
-}, [])
-
   const filtradas = faturas.filter(f => {
-    const nome = f.beneficiario?.cliente?.nome?.toLowerCase() || ''
-    const uc   = f.beneficiario?.uc_beneficiaria?.toLowerCase() || ''
-    const q    = busca.toLowerCase()
-    return nome.includes(q) || uc.includes(q)
-  })
+  const nome = f.beneficiario?.cliente?.nome?.toLowerCase() || ''
+  const uc   = f.beneficiario?.uc_beneficiaria?.toLowerCase() || ''
+  const q    = busca.toLowerCase()
+  const comp = f.competencia ? f.competencia.substring(0, 7) : ''
+  const matchBusca  = nome.includes(q) || uc.includes(q)
+  const matchStatus = filtroStatus === 'todos' || f.status === filtroStatus
+  const matchMes = filtroMes === 'all' || !filtroMes || comp.substring(5, 7) === filtroMes
+  const matchAno = filtroAno === 'all' || !filtroAno || comp.substring(0, 4) === filtroAno
+  return matchBusca && matchStatus && matchMes && matchAno
+})
 
-  const total     = faturas.length
-  const pendentes = faturas.filter(f => f.status === 'pendente').length
-  const pagas     = faturas.filter(f => f.status === 'paga').length
-  const atrasadas = faturas.filter(f => f.status === 'atrasada').length
+const total     = faturas.length
+const pendentes = faturas.filter(f => f.status === 'pendente').length
+const pagas     = faturas.filter(f => f.status === 'paga').length
+const atrasadas = faturas.filter(f => f.status === 'atrasada').length
 
-  return (
+return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-2xl font-semibold">Faturas</h1>
-            <p className="text-muted-foreground text-sm mt-1">{total} faturas no total</p>
+          <h1 className="text-2xl font-semibold">Faturas</h1>
+          <p className="text-muted-foreground text-sm mt-1">{total} faturas no total</p>
         </div>
         <Button variant="outline" onClick={() => setModalRelatorio(true)}>
-            <Download size={16} />
-            Relatório PDF
+          <Download size={16} />
+          Relatório PDF
         </Button>
-        </div>
+      </div>
+
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-muted-foreground">Filtrar por</span>
+
+        <Select value={filtroMes} onValueChange={setFiltroMes}>
+          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os meses" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os meses</SelectItem>
+            {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+              <SelectItem key={m} value={m}>
+                {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][i]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={filtroAno} onValueChange={setFiltroAno}>
+          <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="Todos os anos" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os anos</SelectItem>  
+            <SelectItem value="2024">2024</SelectItem>
+            <SelectItem value="2025">2025</SelectItem>
+            <SelectItem value="2026">2026</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os status</SelectItem>
+            <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="paga">Paga</SelectItem>
+            <SelectItem value="atrasada">Atrasada</SelectItem>
+            <SelectItem value="enviada">Enviada</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <span className="text-xs text-muted-foreground">{filtradas.length} fatura{filtradas.length !== 1 ? 's' : ''}</span>
+
+        {(filtroMes !== 'all' || filtroAno !== 'all' || filtroStatus !== 'todos' || busca) && (
+          <button
+            onClick={() => { setFiltroMes('all'); setFiltroAno('all'); setFiltroStatus('todos'); setBusca('') }}
+            className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+          >
+            ✕ Limpar
+          </button>
+        )}
+      </div>
 
       <div className="grid grid-cols-4 gap-4">
         {[
@@ -186,12 +335,13 @@ export default function Faturas() {
                 <th className="text-left px-4 py-3 font-medium">kWh</th>
                 <th className="text-left px-4 py-3 font-medium">Valor</th>
                 <th className="text-left px-4 py-3 font-medium">Status</th>
+                <th className="text-left px-4 py-3 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtradas.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-muted-foreground">
+                  <td colSpan={8} className="text-center py-12 text-muted-foreground">
                     Nenhuma fatura encontrada
                   </td>
                 </tr>
@@ -201,12 +351,7 @@ export default function Faturas() {
                   return (
                     <tr
                       key={f.id}
-                      onClick={() => {
-                        if (f.status !== 'paga') {
-                          setFaturaSelecionada(f)
-                          setModalPagar(true)
-                        }
-                      }}
+                      onClick={() => abrirFatura(f)}
                       className={cn(
                         'border-t border-border transition-colors hover:bg-muted/50',
                         f.status !== 'paga' ? 'cursor-pointer' : 'cursor-default',
@@ -222,6 +367,35 @@ export default function Faturas() {
                       <td className="px-4 py-3">
                         <Badge variant={st.variant}>{st.label}</Badge>
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1">
+                          {f.pix_copia_cola && (
+                            <button
+                              onClick={e => abrirPix(f, e)}
+                              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              title="Ver PIX"
+                            >
+                              <QrCode size={15} />
+                            </button>
+                          )}
+                          {f.status !== 'paga' && (
+                            <button
+                              onClick={e => abrirEditar(f, e)}
+                              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                              title="Editar valor"
+                            >
+                              <Edit size={15} />
+                            </button>
+                          )}
+                          <button
+                            onClick={e => abrirExcluir(f, e)}
+                            className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Excluir fatura"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   )
                 })
@@ -231,6 +405,7 @@ export default function Faturas() {
         </div>
       )}
 
+      {/* Modal pagar */}
       <Dialog open={modalPagar} onOpenChange={setModalPagar}>
         <DialogContent>
           <DialogHeader>
@@ -246,11 +421,9 @@ export default function Faturas() {
               <p className="font-medium text-lg">{fmtMoeda(faturaSelecionada?.valor || 0)}</p>
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium">Forma de pagamento</label>
+              <Label>Forma de pagamento</Label>
               <Select value={formaPagamento} onValueChange={setFormaPagamento}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="pix">PIX</SelectItem>
                   <SelectItem value="boleto">Boleto</SelectItem>
@@ -262,9 +435,7 @@ export default function Faturas() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setModalPagar(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setModalPagar(false)}>Cancelar</Button>
             <Button onClick={marcarPaga} disabled={loadingPagar}>
               {loadingPagar ? 'Salvando...' : 'Confirmar pagamento'}
             </Button>
@@ -272,57 +443,174 @@ export default function Faturas() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={modalRelatorio} onOpenChange={setModalRelatorio}>
+      {/* Modal editar valor */}
+      <Dialog open={modalEditar} onOpenChange={setModalEditar}>
         <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar valor da fatura</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>kWh alocado</Label>
+                <Input
+                  type="number"
+                  value={formEditar.kwh_alocado}
+                  onChange={e => setFormEditar(p => ({ ...p, kwh_alocado: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Tarifa kWh</Label>
+                <Input
+                  type="number"
+                  step="0.000001"
+                  value={formEditar.tarifa_kwh}
+                  onChange={e => setFormEditar(p => ({ ...p, tarifa_kwh: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Desconto (%)</Label>
+                <Input
+                  type="number"
+                  min={0} max={100}
+                  value={formEditar.desconto_percentual}
+                  onChange={e => setFormEditar(p => ({ ...p, desconto_percentual: e.target.value }))}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Valor final (R$)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formEditar.valor}
+                  onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalEditar(false)}>Cancelar</Button>
+            <Button onClick={salvarEdicao} disabled={loadingEditar}>
+              {loadingEditar ? 'Salvando...' : 'Salvar alterações'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal excluir */}
+      <Dialog open={modalExcluir} onOpenChange={setModalExcluir}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir fatura</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Tem certeza que deseja excluir a fatura de{' '}
+            <span className="font-medium text-foreground">
+              {faturaSelecionada?.beneficiario?.cliente?.nome}
+            </span>
+            {' '}no valor de{' '}
+            <span className="font-medium text-foreground">
+              {fmtMoeda(faturaSelecionada?.valor || 0)}
+            </span>?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalExcluir(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={excluirFatura} disabled={loadingExcluir}>
+              {loadingExcluir ? 'Excluindo...' : 'Confirmar exclusão'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal PIX */}
+      <Dialog open={modalPix} onOpenChange={setModalPix}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>PIX copia e cola</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Código PIX</Label>
+              <div className="p-3 rounded-lg bg-muted font-mono text-xs break-all select-all">
+                {faturaSelecionada?.pix_copia_cola}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalPix(false)}>Fechar</Button>
+            <Button onClick={copiarPix}>
+              {pixCopied ? 'Copiado!' : 'Copiar código'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal relatório */}
+      <Dialog open={modalRelatorio} onOpenChange={setModalRelatorio}>
+        <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Gerar relatório PDF</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="text-sm font-medium">Mês</label>
+            <div className="flex flex-col gap-1.5">
+              <Label>Usina</Label>
+              <Select value={relUsina} onValueChange={setRelUsina}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as usinas</SelectItem>
+                  {usinas.map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Mês</Label>
                 <Select value={relMes} onValueChange={setRelMes}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')).map(m => (
-                      <SelectItem key={m} value={m}>{m}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex-1">
-                <label className="text-sm font-medium">Ano</label>
-                <Select value={relAno} onValueChange={setRelAno}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: 5 }, (_, i) => String(new Date().getFullYear() - i)).map(a => (
-                      <SelectItem key={a} value={a}>{a}</SelectItem>
+                    {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                      <SelectItem key={m} value={m}>
+                        {['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][i]}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <label>Usina</label>
-                <Select value={relUsina} onValueChange={setRelUsina}>
-                    <SelectTrigger>
-                    <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                    <SelectItem value="all">Todas as usinas</SelectItem>
-                    {usinas.map(u => (
-                        <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
-                    ))}
-                    </SelectContent>
+                <Label>Ano</Label>
+                <Select value={relAno} onValueChange={setRelAno}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2026">2026</SelectItem>
+                    <SelectItem value="2027">2027</SelectItem>
+                  </SelectContent>
                 </Select>
-                </div>
+              </div>
             </div>
-            {statusRel && <p className="text-sm text-muted-foreground">{statusRel}</p>}
+            {statusRel && (
+              <p className={`text-sm ${statusRel.includes('Erro') ? 'text-destructive' : 'text-green-500'}`}>
+                {statusRel}
+              </p>
+            )}
           </div>
-          
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalRelatorio(false)}>Cancelar</Button>
             <Button onClick={gerarRelatorio} disabled={loadingRel}>
-              {loadingRel ? 'Gerando...' : 'Gerar PDF'}
+              <Download size={16} />
+              {loadingRel ? 'Gerando...' : 'Gerar e baixar'}
             </Button>
           </DialogFooter>
         </DialogContent>
