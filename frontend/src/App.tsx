@@ -8,6 +8,7 @@ import Logs from '@/pages/Logs'
 import Dashboard from '@/pages/Dashboard'
 import Bot from '@/pages/Bot'
 import UploadFaturas from '@/pages/Upload'
+import Analytics from '@/pages/Analytics'
 
 function RotaProtegida({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token')
@@ -28,6 +29,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard" element={<ComLayout><Dashboard /></ComLayout>} />
+        <Route path="/analytics" element={<ComLayout><Analytics /></ComLayout>} />
         <Route path="/clientes" element={<ComLayout><Clientes /></ComLayout>} />
         <Route path="/faturas" element={<ComLayout><Faturas /></ComLayout>} />
         <Route path="/usinas"    element={<ComLayout><Usinas /></ComLayout>} />

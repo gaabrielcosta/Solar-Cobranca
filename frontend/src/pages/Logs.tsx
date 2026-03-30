@@ -3,6 +3,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Search, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/hooks/useApi'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Log {
   id: string
@@ -47,29 +48,43 @@ export default function Logs() {
   const [loadingMais, setLoadingMais] = useState(false)
   const [offset, setOffset] = useState(0)
   const [total, setTotal] = useState(0)
+  const [filtroUsina, setFiltroUsina] = useState('')
+  const [filtroAcao, setFiltroAcao] = useState('')
+  const [filtroDias, setFiltroDias] = useState('30')
+  const [usinas, setUsinas] = useState<{ id: string; nome: string }[]>([])
 
   async function carregar(reset = true) {
-    if (reset) setLoading(true)
-    else setLoadingMais(true)
+  if (reset) setLoading(true)
+  else setLoadingMais(true)
 
-    const off = reset ? 0 : offset
-    const r = await apiFetch<{ data: Log[]; total: number }>(
-      `/api/logs?limit=${LIMIT}&offset=${off}`
-    )
+  const off = reset ? 0 : offset
+  const params = new URLSearchParams()
+  params.set('limit', String(LIMIT))
+  params.set('offset', String(off))
+  if (filtroUsina && filtroUsina !== 'all') params.set('usina_id', filtroUsina)
+  if (filtroAcao && filtroAcao !== 'all') params.set('acao', filtroAcao)
+  if (filtroDias && filtroDias !== 'all') params.set('dias', filtroDias)
 
-    if (reset) {
-      setLogs(r.data || [])
-    } else {
-      setLogs(prev => [...prev, ...(r.data || [])])
-    }
+  const r = await apiFetch<{ data: Log[]; total: number }>(`/api/logs?${params.toString()}`)
 
-    setTotal(r.total || 0)
-    setOffset(off + (r.data?.length || 0))
-    setLoading(false)
-    setLoadingMais(false)
-  }
+  if (reset) setLogs(r.data || [])
+  else setLogs(prev => [...prev, ...(r.data || [])])
 
-  useEffect(() => { carregar() }, [])
+  setTotal(r.total || 0)
+  setOffset(off + (r.data?.length || 0))
+  setLoading(false)
+  setLoadingMais(false)
+}
+
+  useEffect(() => {
+  apiFetch<{ data: { id: string; nome: string }[] }>('/api/usinas')
+    .then(r => setUsinas(r.data || []))
+}, [])
+
+useEffect(() => {
+  setOffset(0)
+  carregar(true)
+}, [filtroUsina, filtroAcao, filtroDias])
 
   const filtrados = logs.filter(l =>
     l.descricao?.toLowerCase().includes(busca.toLowerCase()) ||
@@ -89,15 +104,53 @@ export default function Logs() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Logs</h1>
           <p className="text-muted-foreground text-sm mt-1">{total} eventos registrados</p>
         </div>
-        <Button variant="outline" onClick={() => carregar()}>
-          <RefreshCw size={16} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={filtroUsina} onValueChange={setFiltroUsina}>
+            <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as usinas</SelectItem>
+              {usinas.map(u => (
+                <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroAcao} onValueChange={setFiltroAcao}>
+            <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Todas as ações" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as ações</SelectItem>
+              <SelectItem value="CLIENTE_CRIADO">Cliente criado</SelectItem>
+              <SelectItem value="CLIENTE_EDITADO">Cliente editado</SelectItem>
+              <SelectItem value="CLIENTE_EXCLUIDO">Cliente excluído</SelectItem>
+              <SelectItem value="CLIENTE_DESATIVADO">Cliente desativado</SelectItem>
+              <SelectItem value="BENEFICIARIO_ADICIONADO">Beneficiário adicionado</SelectItem>
+              <SelectItem value="BENEFICIARIO_REMOVIDO">Beneficiário removido</SelectItem>
+              <SelectItem value="FATURA_PAGA">Fatura paga</SelectItem>
+              <SelectItem value="PDF_PROCESSADO">PDF processado</SelectItem>
+              <SelectItem value="PIX_EXTRAIDO">PIX extraído</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroDias} onValueChange={setFiltroDias}>
+            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Últimos 7 dias</SelectItem>
+              <SelectItem value="30">Últimos 30 dias</SelectItem>
+              <SelectItem value="90">Últimos 90 dias</SelectItem>
+              <SelectItem value="all">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="sm" onClick={() => carregar(true)} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </Button>
+        </div>
       </div>
 
       <div className="relative">

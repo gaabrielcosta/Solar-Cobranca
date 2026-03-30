@@ -10,13 +10,15 @@ import {
   Bot,
   ClipboardList,
   LogOut,
-  Upload, 
+  Upload,
+  BarChart2, 
 } from 'lucide-react'
 import { useTheme } from '@/components/ThemeProvider'
 
 
 const itens = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+  { icon: BarChart2,       label: 'Analytics', path: '/analytics' },
   { icon: Users,           label: 'Clientes',  path: '/clientes' },
   { icon: FileText,        label: 'Faturas',   path: '/faturas' },
   { icon: Sun,             label: 'Usinas',    path: '/usinas' },
