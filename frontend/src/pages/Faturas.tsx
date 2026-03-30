@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/hooks/useApi'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Fatura {
   id: string
@@ -20,11 +23,11 @@ interface Fatura {
 }
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  pendente:   { label: 'Pendente',   variant: 'outline' },
-  paga:       { label: 'Paga',       variant: 'default' },
-  atrasada:   { label: 'Atrasada',   variant: 'destructive' },
-  enviada:    { label: 'Enviada',    variant: 'secondary' },
-  negociada:  { label: 'Negociada',  variant: 'secondary' },
+  pendente:  { label: 'Pendente',  variant: 'outline' },
+  paga:      { label: 'Paga',      variant: 'default' },
+  atrasada:  { label: 'Atrasada',  variant: 'destructive' },
+  enviada:   { label: 'Enviada',   variant: 'secondary' },
+  negociada: { label: 'Negociada', variant: 'secondary' },
 }
 
 function fmtMoeda(v: number) {
@@ -33,8 +36,7 @@ function fmtMoeda(v: number) {
 
 function fmtData(d: string) {
   if (!d) return '—'
-  const s = typeof d === 'string' ? d : new Date(d).toISOString()
-  const [yyyy, mm, dd] = s.substring(0, 10).split('-')
+  const [yyyy, mm, dd] = d.substring(0, 10).split('-')
   return `${dd}/${mm}/${yyyy}`
 }
 
@@ -48,11 +50,34 @@ export default function Faturas() {
   const [faturas, setFaturas] = useState<Fatura[]>([])
   const [busca, setBusca] = useState('')
   const [loading, setLoading] = useState(true)
+  const [modalPagar, setModalPagar] = useState(false)
+  const [faturaSelecionada, setFaturaSelecionada] = useState<Fatura | null>(null)
+  const [formaPagamento, setFormaPagamento] = useState('pix')
+  const [loadingPagar, setLoadingPagar] = useState(false)
+
+  async function carregar() {
+    const r = await apiFetch<{ data: Fatura[] }>('/api/faturas')
+    setFaturas(r.data || [])
+  }
+
+  async function marcarPaga() {
+    if (!faturaSelecionada) return
+    setLoadingPagar(true)
+    try {
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}/pagar`, {
+        method: 'PUT',
+        body: JSON.stringify({ forma_pagamento: formaPagamento }),
+      })
+      setModalPagar(false)
+      setFaturaSelecionada(null)
+      await carregar()
+    } finally {
+      setLoadingPagar(false)
+    }
+  }
 
   useEffect(() => {
-    apiFetch<{ data: Fatura[] }>('/api/faturas')
-      .then(r => setFaturas(r.data || []))
-      .finally(() => setLoading(false))
+    carregar().finally(() => setLoading(false))
   }, [])
 
   const filtradas = faturas.filter(f => {
@@ -127,8 +152,15 @@ export default function Faturas() {
                   return (
                     <tr
                       key={f.id}
+                      onClick={() => {
+                        if (f.status !== 'paga') {
+                          setFaturaSelecionada(f)
+                          setModalPagar(true)
+                        }
+                      }}
                       className={cn(
-                        'border-t border-border transition-colors hover:bg-muted/50 cursor-pointer',
+                        'border-t border-border transition-colors hover:bg-muted/50',
+                        f.status !== 'paga' ? 'cursor-pointer' : 'cursor-default',
                         i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
                       )}
                     >
@@ -149,6 +181,47 @@ export default function Faturas() {
           </table>
         </div>
       )}
+
+      <Dialog open={modalPagar} onOpenChange={setModalPagar}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Marcar como paga</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Valor</p>
+              <p className="font-medium text-lg">{fmtMoeda(faturaSelecionada?.valor || 0)}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium">Forma de pagamento</label>
+              <Select value={formaPagamento} onValueChange={setFormaPagamento}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="boleto">Boleto</SelectItem>
+                  <SelectItem value="ted">TED</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalPagar(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={marcarPaga} disabled={loadingPagar}>
+              {loadingPagar ? 'Salvando...' : 'Confirmar pagamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
