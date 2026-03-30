@@ -30,15 +30,22 @@ type Aba = 'cliente' | 'usina'
 
 export default function UploadFaturas() {
   const [aba, setAba] = useState<Aba>('cliente')
+  const [subAba, setSubAba] = useState<'pdf' | 'manual'>('pdf')
 
-  // Fatura cliente
   const [arquivos, setArquivos] = useState<File[]>([])
   const [resultados, setResultados] = useState<ResultadoFatura[]>([])
   const [processando, setProcessando] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Demonstrativo usina
+  const [formManual, setFormManual] = useState({
+    uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '',
+    kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: ''
+  })
+  const [loadingManual, setLoadingManual] = useState(false)
+  const [resultadoManual, setResultadoManual] = useState<{ sucesso: boolean; mensagem: string } | null>(null)
+  const [erroManual, setErroManual] = useState('')
+
   const [dragOverUsina, setDragOverUsina] = useState(false)
   const [loadingUsina, setLoadingUsina] = useState(false)
   const [preview, setPreview] = useState<PreviewDemonstrativo | null>(null)
@@ -65,7 +72,6 @@ export default function UploadFaturas() {
     setResultados([])
     const token = localStorage.getItem('token')
     const novosResultados: ResultadoFatura[] = []
-
     for (const arquivo of arquivos) {
       const formData = new FormData()
       formData.append('pdf', arquivo)
@@ -91,6 +97,44 @@ export default function UploadFaturas() {
       setResultados([...novosResultados])
     }
     setProcessando(false)
+  }
+
+  async function enviarManual() {
+    if (!formManual.uc || !formManual.competencia || !formManual.kwh_compensado || !formManual.tarifa_kwh) {
+      setErroManual('UC, competência, kWh e tarifa são obrigatórios')
+      return
+    }
+    setErroManual('')
+    setLoadingManual(true)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/faturas/manual', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uc: formManual.uc,
+          competencia: formManual.competencia,
+          kwh_compensado: Number(formManual.kwh_compensado),
+          tarifa_kwh: Number(formManual.tarifa_kwh),
+          kwh_consumo_energisa: Number(formManual.kwh_consumo_energisa) || 0,
+          cip: Number(formManual.cip) || 0,
+          outros: Number(formManual.outros) || 0,
+          total_fatura_energisa: Number(formManual.total_fatura_energisa) || 0,
+          saldo_credito: Number(formManual.saldo_credito) || 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroManual(data.erro || 'Erro ao salvar fatura')
+        return
+      }
+      setResultadoManual({ sucesso: true, mensagem: data.mensagem || 'Fatura gerada com sucesso' })
+      setFormManual({ uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '', kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: '' })
+    } catch {
+      setErroManual('Erro ao conectar com o servidor')
+    } finally {
+      setLoadingManual(false)
+    }
   }
 
   async function enviarDemonstrativo(file: File) {
@@ -121,30 +165,30 @@ export default function UploadFaturas() {
   }
 
   async function processarDemonstrativo() {
-  if (!preview) return
-  setErroUsina('')
-  const token = localStorage.getItem('token')
-  try {
-    const res = await fetch('/api/upload/processar-demonstrativo', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        usina_id: preview.usina_id,
-        dados_extraidos: preview.dados_extraidos,
-        tarifa_kwh: 0,
-      }),
-    })
-    const data = await res.json()
-    if (!res.ok || !data.sucesso) {
-      setErroUsina(data.erro || 'Erro ao processar demonstrativo')
-      return
+    if (!preview) return
+    setErroUsina('')
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/upload/processar-demonstrativo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usina_id: preview.usina_id,
+          dados_extraidos: preview.dados_extraidos,
+          tarifa_kwh: 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroUsina(data.erro || 'Erro ao processar demonstrativo')
+        return
+      }
+      setResultadoUsina({ sucesso: true, mensagem: data.mensagem || 'Demonstrativo processado com sucesso' })
+      setPreview(null)
+    } catch {
+      setErroUsina('Erro ao processar demonstrativo')
     }
-    setResultadoUsina({ sucesso: true, mensagem: data.mensagem || 'Demonstrativo processado com sucesso' })
-    setPreview(null)
-  } catch {
-    setErroUsina('Erro ao processar demonstrativo')
   }
-}
 
   const sucessos = resultados.filter(r => r.sucesso).length
   const erros    = resultados.filter(r => !r.sucesso).length
@@ -159,23 +203,15 @@ export default function UploadFaturas() {
       <div className="flex gap-2 border-b border-border">
         <button
           onClick={() => setAba('cliente')}
-          className={cn(
-            'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-            aba === 'cliente'
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          )}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'cliente' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
         >
           Fatura do cliente
         </button>
         <button
           onClick={() => setAba('usina')}
-          className={cn(
-            'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-            aba === 'usina'
-              ? 'border-primary text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          )}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'usina' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
         >
           Demonstrativo da usina
         </button>
@@ -183,79 +219,152 @@ export default function UploadFaturas() {
 
       {aba === 'cliente' && (
         <>
-          <div
-            onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => { e.preventDefault(); setDragOver(false); selecionarArquivos(e.dataTransfer.files) }}
-            onClick={() => inputRef.current?.click()}
-            className={cn(
-              'border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
-              dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30'
-            )}
-          >
-            <Upload size={32} className="text-muted-foreground" />
-            <div className="text-center">
-              <p className="font-medium">Arraste os PDFs aqui</p>
-              <p className="text-sm text-muted-foreground mt-1">Faturas Energisa dos clientes — múltiplos arquivos</p>
-            </div>
-            <input ref={inputRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => selecionarArquivos(e.target.files)} />
+          <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+            <button
+              onClick={() => setSubAba('pdf')}
+              className={cn('px-4 py-2 text-sm font-medium transition-colors',
+                subAba === 'pdf' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              PDF automático
+            </button>
+            <button
+              onClick={() => setSubAba('manual')}
+              className={cn('px-4 py-2 text-sm font-medium border-l border-border transition-colors',
+                subAba === 'manual' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              Entrada manual
+            </button>
           </div>
 
-          {arquivos.length > 0 && (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">{arquivos.length} arquivo{arquivos.length !== 1 ? 's' : ''} selecionado{arquivos.length !== 1 ? 's' : ''}</p>
-                <Button onClick={processarPDFs} disabled={processando}>
-                  {processando ? <><Loader size={16} className="animate-spin" />Processando...</> : <><FileText size={16} />Processar {arquivos.length} PDF{arquivos.length !== 1 ? 's' : ''}</>}
-                </Button>
+          {subAba === 'pdf' && (
+            <>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); selecionarArquivos(e.dataTransfer.files) }}
+                onClick={() => inputRef.current?.click()}
+                className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                  dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
+              >
+                <Upload size={32} className="text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Arraste os PDFs aqui</p>
+                  <p className="text-sm text-muted-foreground mt-1">Faturas Energisa dos clientes — múltiplos arquivos</p>
+                </div>
+                <input ref={inputRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => selecionarArquivos(e.target.files)} />
               </div>
-              <div className="flex flex-col gap-2">
-                {arquivos.map(f => {
-                  const resultado = resultados.find(r => r.arquivo === f.name)
-                  return (
-                    <div key={f.name} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
-                      {resultado ? (
-                        resultado.sucesso ? <CheckCircle size={18} className="text-green-500 flex-shrink-0" /> : <XCircle size={18} className="text-destructive flex-shrink-0" />
-                      ) : processando ? (
-                        <Loader size={18} className="animate-spin text-muted-foreground flex-shrink-0" />
-                      ) : (
-                        <FileText size={18} className="text-muted-foreground flex-shrink-0" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{f.name}</p>
-                        {resultado && (
-                          <p className={cn('text-xs mt-0.5', resultado.sucesso ? 'text-green-500' : 'text-destructive')}>
-                            {resultado.sucesso
-                              ? `${resultado.cliente} — UC ${resultado.uc} — R$ ${Number(resultado.valor_final).toFixed(2).replace('.', ',')} — ${resultado.competencia}`
-                              : resultado.mensagem}
-                          </p>
-                        )}
-                      </div>
-                      {!processando && !resultado && (
-                        <button onClick={e => { e.stopPropagation(); removerArquivo(f.name) }} className="text-muted-foreground hover:text-destructive transition-colors">
-                          <XCircle size={16} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
 
-          {resultados.length > 0 && !processando && (
-            <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
-              <div className="flex items-center gap-2">
-                <CheckCircle size={16} className="text-green-500" />
-                <span className="text-sm"><span className="font-medium">{sucessos}</span> processado{sucessos !== 1 ? 's' : ''}</span>
-              </div>
-              {erros > 0 && (
-                <div className="flex items-center gap-2">
-                  <XCircle size={16} className="text-destructive" />
-                  <span className="text-sm"><span className="font-medium">{erros}</span> erro{erros !== 1 ? 's' : ''}</span>
+              {arquivos.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{arquivos.length} arquivo{arquivos.length !== 1 ? 's' : ''} selecionado{arquivos.length !== 1 ? 's' : ''}</p>
+                    <Button onClick={processarPDFs} disabled={processando}>
+                      {processando ? <><Loader size={16} className="animate-spin" />Processando...</> : <><FileText size={16} />Processar {arquivos.length} PDF{arquivos.length !== 1 ? 's' : ''}</>}
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {arquivos.map(f => {
+                      const resultado = resultados.find(r => r.arquivo === f.name)
+                      return (
+                        <div key={f.name} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
+                          {resultado ? (
+                            resultado.sucesso ? <CheckCircle size={18} className="text-green-500 flex-shrink-0" /> : <XCircle size={18} className="text-destructive flex-shrink-0" />
+                          ) : processando ? (
+                            <Loader size={18} className="animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <FileText size={18} className="text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{f.name}</p>
+                            {resultado && (
+                              <p className={cn('text-xs mt-0.5', resultado.sucesso ? 'text-green-500' : 'text-destructive')}>
+                                {resultado.sucesso
+                                  ? `${resultado.cliente} — UC ${resultado.uc} — R$ ${Number(resultado.valor_final).toFixed(2).replace('.', ',')} — ${resultado.competencia}`
+                                  : resultado.mensagem}
+                              </p>
+                            )}
+                          </div>
+                          {!processando && !resultado && (
+                            <button onClick={e => { e.stopPropagation(); removerArquivo(f.name) }} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <XCircle size={16} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
-              <Button variant="outline" className="ml-auto" onClick={() => { setArquivos([]); setResultados([]) }}>Limpar</Button>
+
+              {resultados.length > 0 && !processando && (
+                <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-green-500" />
+                    <span className="text-sm"><span className="font-medium">{sucessos}</span> processado{sucessos !== 1 ? 's' : ''}</span>
+                  </div>
+                  {erros > 0 && (
+                    <div className="flex items-center gap-2">
+                      <XCircle size={16} className="text-destructive" />
+                      <span className="text-sm"><span className="font-medium">{erros}</span> erro{erros !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  <Button variant="outline" className="ml-auto" onClick={() => { setArquivos([]); setResultados([]) }}>Limpar</Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {subAba === 'manual' && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+                Use quando o PDF não for lido corretamente. Os valores devem ser retirados diretamente da fatura impressa da Energisa.
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">UC do cliente *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 3647072" value={formManual.uc} onChange={e => setFormManual(p => ({ ...p, uc: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Competência *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="MM/AAAA" value={formManual.competencia} onChange={e => setFormManual(p => ({ ...p, competencia: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">kWh compensados (GDII) *</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 2520" value={formManual.kwh_compensado} onChange={e => setFormManual(p => ({ ...p, kwh_compensado: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Tarifa kWh (Energisa) *</label>
+                  <input type="number" step="0.000001" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono" placeholder="ex: 1.092920" value={formManual.tarifa_kwh} onChange={e => setFormManual(p => ({ ...p, tarifa_kwh: e.target.value }))} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground border-t border-border pt-4">Informativos (opcional)</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Consumo Energisa (kWh)</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 4349" value={formManual.kwh_consumo_energisa} onChange={e => setFormManual(p => ({ ...p, kwh_consumo_energisa: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">CIP Municipal (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 302.22" value={formManual.cip} onChange={e => setFormManual(p => ({ ...p, cip: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Multa/Juros (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 88.62" value={formManual.outros} onChange={e => setFormManual(p => ({ ...p, outros: e.target.value }))} />
+                </div>
+              </div>
+              {erroManual && <p className="text-sm text-destructive">{erroManual}</p>}
+              {resultadoManual && (
+                <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                  <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
+                  <p className="text-sm text-green-500">{resultadoManual.mensagem}</p>
+                  <Button variant="outline" className="ml-auto" onClick={() => setResultadoManual(null)}>Nova entrada</Button>
+                </div>
+              )}
+              <Button onClick={enviarManual} disabled={loadingManual} className="w-fit">
+                {loadingManual ? <><Loader size={16} className="animate-spin" />Salvando...</> : 'Gerar fatura manualmente'}
+              </Button>
             </div>
           )}
         </>
@@ -273,10 +382,8 @@ export default function UploadFaturas() {
                 if (file?.type === 'application/pdf') { enviarDemonstrativo(file) }
               }}
               onClick={() => inputUsinaRef.current?.click()}
-              className={cn(
-                'border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
-                dragOverUsina ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30'
-              )}
+              className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                dragOverUsina ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
             >
               <Sun size={32} className="text-muted-foreground" />
               <div className="text-center">
@@ -354,28 +461,21 @@ export default function UploadFaturas() {
                   </table>
                 </div>
               )}
-              <div className="flex gap-3">
-                <Button variant="outline" onClick={() => { setPreview(null); setErroUsina('') }}>
-                  Cancelar
-                </Button>
-                <Button onClick={processarDemonstrativo}>
-                  Confirmar e salvar
-                </Button>
-              </div>
 
               {erroUsina && <p className="text-sm text-destructive">{erroUsina}</p>}
 
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => { setPreview(null); setErroUsina('') }}>Cancelar</Button>
+                <Button onClick={processarDemonstrativo}>Confirmar e salvar</Button>
+              </div>
             </div>
-
           )}
 
           {resultadoUsina && (
             <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
               <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
               <p className="text-sm text-green-500">{resultadoUsina.mensagem}</p>
-              <Button variant="outline" className="ml-auto" onClick={() => setResultadoUsina(null)}>
-                Processar outro
-              </Button>
+              <Button variant="outline" className="ml-auto" onClick={() => setResultadoUsina(null)}>Processar outro</Button>
             </div>
           )}
         </>
