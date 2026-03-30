@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Fatura — ACELIVRE</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --g900: #0f2318; --g800: #1a3a2a; --g700: #2d6a4f;
+  --g500: #52b788; --g100: #d8f3dc; --g50: #f0faf3;
+  --ink: #1c1f1d; --ink2: #4a5250; --ink3: #8a9490;
+  --line: #e4ebe6; --bg: #f7f9f7;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Outfit', sans-serif;
+}
+
+@media print {
+  body { background: white !important; padding: 0 !important; }
+  .carne { box-shadow: none !important; border: 1px solid #ccc !important; }
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--ink);
+}
+
+.carne { width: 700px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 6px rgba(15,35,24,0.06), 0 16px 40px rgba(15,35,24,0.10); }
+
+/* HEADER */
+.hdr { background: var(--g800); display: flex; align-items: stretch; position: relative; overflow: hidden; }
+.hdr::after { content:''; position:absolute; right:-40px; top:-40px; width:180px; height:180px; border-radius:50%; border:36px solid rgba(82,183,136,0.08); }
+.logo-zone { width: 86px; flex-shrink: 0; background: rgba(0,0,0,0.16); border-right: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; padding: 18px 10px; }
+.logo-zone img { width: 56px; height: auto; display: block; }
+.hdr-main { flex: 1; padding: 18px 24px 18px 20px; display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
+.brand-name { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+.brand-sub { font-size: 8.5px; color: rgba(116,198,157,0.85); letter-spacing: 1.5px; text-transform: uppercase; margin-top: 4px; }
+.ref-block { text-align: right; }
+.ref-label { font-size: 8px; color: rgba(116,198,157,0.7); letter-spacing: 2px; text-transform: uppercase; }
+.ref-num { font-family: var(--mono); font-size: 18px; color: #fff; font-weight: 500; margin-top: 2px; }
+.ref-mes { font-size: 10px; color: rgba(255,255,255,0.35); margin-top: 3px; }
+
+/* DUE STRIP */
+.due-strip { background: var(--g50); border-bottom: 1px solid var(--g100); padding: 9px 28px; display: flex; align-items: center; justify-content: space-between; }
+.due-left { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--g700); font-weight: 500; }
+.due-icon { width: 20px; height: 20px; background: var(--g100); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; }
+.due-val { font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--g800); background: var(--g100); padding: 3px 10px; border-radius: 4px; }
+
+/* CONTENT */
+.content { padding: 22px 28px 28px; }
+
+.main-row { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.lbl { font-size: 8.5px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink3); font-weight: 600; margin-bottom: 7px; }
+.client-name { font-size: 15px; font-weight: 600; color: var(--ink); letter-spacing: -0.2px; }
+.client-info { font-size: 11.5px; color: var(--ink2); line-height: 1.75; margin-top: 3px; }
+.client-info strong { color: var(--ink); font-weight: 500; }
+
+.total-box { background: var(--g800); border-radius: 7px; padding: 16px 20px; text-align: center; min-width: 155px; position: relative; overflow: hidden; }
+.total-box::before { content:''; position:absolute; bottom:-16px; right:-16px; width:64px; height:64px; border-radius:50%; background: rgba(82,183,136,0.13); }
+.total-lbl { font-size: 8px; color: rgba(116,198,157,0.85); letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+.total-val { font-family: var(--mono); font-size: 26px; color: #fff; font-weight: 500; letter-spacing: -1px; line-height: 1; margin: 6px 0 3px; }
+.total-orig { font-size: 9.5px; color: rgba(255,255,255,0.32); text-decoration: line-through; margin-bottom: 7px; }
+.eco-pill { display: inline-flex; align-items: center; gap: 3px; background: var(--g500); color: #fff; font-size: 8.5px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+
+/* kWh ROW */
+.kwh-row { display: flex; gap: 1px; background: var(--line); border-radius: 5px; overflow: hidden; margin: 18px 0; }
+.kwh-cell { flex: 1; background: var(--bg); padding: 11px 14px; }
+.kwh-cell.accent { background: var(--g50); }
+.kwh-cell-lbl { font-size: 8px; color: var(--ink3); letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600; }
+.kwh-cell-val { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--ink); margin-top: 3px; }
+.kwh-cell-val.green { color: var(--g700); }
+
+/* DETALHAMENTO */
+.det-title { font-size: 8.5px; letter-spacing: 2px; text-transform: uppercase; color: var(--ink3); font-weight: 600; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.det-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.det-table th { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--ink3); font-weight: 600; text-align: left; padding: 0 0 7px; border-bottom: 1px solid var(--line); }
+.det-table th:last-child { text-align: right; }
+.det-table td { padding: 7px 0; border-bottom: 1px solid var(--line); color: var(--ink2); vertical-align: top; }
+.det-table td:first-child { color: var(--ink); font-weight: 500; }
+.det-table td:nth-child(2), .det-table td:nth-child(3) { text-align: right; font-family: var(--mono); font-size: 11px; }
+.det-table td:last-child { text-align: right; font-family: var(--mono); font-size: 12.5px; color: var(--ink); font-weight: 500; }
+.det-table tr.green-row td { color: var(--g700); }
+.det-table tr.green-row td:last-child { color: var(--g700); }
+.det-table tr.subtotal td { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-weight: 600; color: var(--ink); padding: 9px 0; }
+.det-table tr.spacer td { color: var(--ink3); font-size: 12px; border-bottom: 2px solid var(--g800); padding-bottom: 14px; }
+.det-table tr.total-row td { border-bottom: none; border-top: 2px solid var(--g800); padding-top: 10px; font-size: 14px; color: var(--g800); font-weight: 700; }
+.det-table tr.discount-row td { color: var(--g700); font-weight: 500; }
+.det-table tr.discount-row td:last-child { color: var(--g700); }
+
+/* FOOTER */
+.ftr { background: var(--g900); padding: 12px 28px; display: flex; align-items: center; justify-content: space-between; }
+.ftr-brand { font-size: 10px; color: rgba(255,255,255,0.32); line-height: 1.6; }
+.ftr-brand strong { color: rgba(255,255,255,0.6); font-weight: 500; }
+.ftr-contact { font-size: 10px; color: rgba(255,255,255,0.32); text-align: right; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="carne">
+
+  <!-- HEADER -->
+  <div class="hdr">
+    <div class="logo-zone">
+      <img src="/acelivre_logo.png" alt="ACELIVRE">
+    </div>
+    <div class="hdr-main">
+      <div>
+        <div class="brand-name">ACELIVRE</div>
+        <div class="brand-sub">Geração Compartilhada</div>
+      </div>
+      <div class="ref-block">
+        <div class="ref-label">Fatura Nº</div>
+        <div class="ref-num">{{NUMERO_FATURA}}</div>
+        <div class="ref-mes">Ref. {{COMPETENCIA}}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VENCIMENTO -->
+  <div class="due-strip">
+    <div class="due-left">
+      <div class="due-icon">⚡</div>
+      Vencimento
+    </div>
+    <div class="due-val">{{DATA_VENCIMENTO_EXTENSO}}</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- Cliente + Total -->
+    <div class="main-row">
+      <div>
+        <div class="lbl">Cliente</div>
+        <div class="client-name">{{CLIENTE_NOME}}</div>
+        <div class="client-info">
+          {{CLIENTE_ENDERECO}}<br>
+          <strong>CPF/CNPJ:</strong> {{CLIENTE_CPF}} &nbsp;·&nbsp; <strong>UC:</strong> {{UC_BENEFICIARIA}}
+        </div>
+      </div>
+      <div class="total-box">
+        <div class="total-lbl">Total com Desconto</div>
+        <div class="total-val">{{VALOR_FINAL_DISPLAY}}</div>
+        <div class="total-orig">{{VALOR_SEM_DESCONTO}} sem desconto</div>
+        <div class="eco-pill">▼ {{DESCONTO_PCT}}% economia</div>
+      </div>
+    </div>
+
+    <!-- kWh strip -->
+    <div class="kwh-row">
+      <div class="kwh-cell">
+        <div class="kwh-cell-lbl">Competência</div>
+        <div class="kwh-cell-val" style="font-size:11px;">{{COMPETENCIA}}</div>
+      </div>
+      <div class="kwh-cell accent">
+        <div class="kwh-cell-lbl">kWh Compensados</div>
+        <div class="kwh-cell-val green">{{KWH_COMPENSADO}} kWh</div>
+      </div>
+      <div class="kwh-cell">
+        <div class="kwh-cell-lbl">Tarifa kWh</div>
+        <div class="kwh-cell-val">R$ {{TARIFA_KWH}}</div>
+      </div>
+      <div class="kwh-cell">
+        <div class="kwh-cell-lbl">Emissão</div>
+        <div class="kwh-cell-val" style="font-size:11px;">{{DATA_EMISSAO}}</div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- FOOTER -->
+  <div class="ftr">
+    <div class="ftr-brand">
+      <strong>ACELIVRE</strong> — CNPJ: 63.917.183/0001-24<br>
+      Bataguassu — MS
+    </div>
+    <div class="ftr-contact">
+      contato@acelivre.com.br<br>
+      Emitida em {{DATA_EMISSAO}}
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

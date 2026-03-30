@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html class="dark" lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ACELIVRE — Acesso ao Sistema</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "primary": "#52b788",
+          "background": "#0a0b0a",
+          "surface": "#121412",
+          "on-surface": "#e2e3df",
+          "on-surface-variant": "#9ca3af",
+        },
+        fontFamily: {
+          "headline": ["Manrope", "sans-serif"],
+          "body": ["Inter", "sans-serif"],
+        },
+      },
+    },
+  }
+</script>
+<style>
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    font-family: 'Material Symbols Outlined';
+  }
+  .glass-portal {
+    background: rgba(18, 20, 18, 0.7);
+    backdrop-filter: blur(40px);
+    border: 1px solid rgba(82, 183, 136, 0.1);
+  }
+  .glow-soft { box-shadow: 0 0 50px -12px rgba(82, 183, 136, 0.25); }
+  .bg-flow {
+    position: absolute; width: 150%; height: 150%; top: -25%; left: -25%;
+    background-image: radial-gradient(circle at 50% 50%, rgba(82,183,136,0.04) 0%, transparent 50%);
+    filter: blur(60px); z-index: 0;
+  }
+  .gateway-shadow {
+    position: absolute; inset: -2px; z-index: -1; border-radius: inherit;
+    background: linear-gradient(135deg, rgba(82,183,136,0.2), transparent, rgba(82,183,136,0.1));
+    filter: blur(10px);
+  }
+  .btn-entrar {
+    background: linear-gradient(135deg, #52b788 0%, #2d9c63 100%);
+  }
+</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-screen flex flex-col overflow-hidden">
+
+<header class="fixed top-0 w-full h-20 flex items-center px-10 z-50">
+  <div class="flex items-center gap-3">
+    <div class="w-8 h-8 flex items-center justify-center rounded-lg" style="background:rgba(82,183,136,0.1)">
+      <span class="material-symbols-outlined text-xl" style="color:#52b788;font-variation-settings:'FILL' 1">bolt</span>
+    </div>
+    <span class="text-xl font-extrabold tracking-tighter font-headline uppercase" style="color:#e2e3df">ACELIVRE</span>
+  </div>
+</header>
+
+<main class="flex-grow flex items-center justify-center relative px-6">
+  <div class="bg-flow"></div>
+  <div class="w-full max-w-md relative z-10">
+    <div class="glass-portal rounded-2xl p-8 md:p-12 glow-soft relative">
+      <div class="gateway-shadow"></div>
+
+      <div class="text-center mb-10">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6" style="background:rgba(82,183,136,0.1);border:1px solid rgba(82,183,136,0.2)">
+          <span class="material-symbols-outlined text-3xl" style="color:#52b788;font-variation-settings:'FILL' 1">solar_power</span>
+        </div>
+        <h1 class="font-headline text-3xl font-bold tracking-tight text-white mb-3">Portal de Acesso</h1>
+        <p style="color:#9ca3af" class="text-sm leading-relaxed">Sistema de gestão de energia solar por geração compartilhada.</p>
+      </div>
+
+      <div class="space-y-6">
+        <div class="space-y-2">
+          <label class="block text-[10px] font-bold uppercase tracking-[0.2em] font-headline" style="color:rgba(82,183,136,0.8)">Senha de Acesso</label>
+          <div class="relative group">
+            <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 transition-colors" id="icon-key" style="color:#9ca3af">key</span>
+            <input id="inp-senha" type="password"
+              class="w-full h-14 border pl-12 pr-12 rounded-xl transition-all duration-300 outline-none"
+              style="background:rgba(255,255,255,0.03);border-color:rgba(255,255,255,0.1);color:#e2e3df"
+              placeholder="••••••••"
+              onkeydown="if(event.key==='Enter') entrar()"/>
+            <button onclick="toggleSenha()" class="absolute right-4 top-1/2 -translate-y-1/2 transition-colors" style="color:#9ca3af" type="button">
+              <span class="material-symbols-outlined text-xl" id="icon-vis">visibility</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Mensagem de erro -->
+        <div id="erro-msg" style="display:none;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:8px;padding:10px 14px;font-size:13px;color:#f87171"></div>
+
+        <button onclick="entrar()" id="btn-entrar"
+          class="w-full h-14 btn-entrar font-headline font-extrabold rounded-xl transition-all duration-300 flex items-center justify-center gap-2 group"
+          style="color:#0a0b0a">
+          <span id="btn-texto">ENTRAR NO SISTEMA</span>
+          <span class="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="mt-8 flex flex-col items-center gap-2">
+      <div class="h-px w-12" style="background:linear-gradient(to right,transparent,rgba(82,183,136,0.3),transparent)"></div>
+      <div class="flex items-center gap-2" style="color:rgba(82,183,136,0.4)">
+        <span class="material-symbols-outlined text-sm">verified_user</span>
+        <span class="text-[10px] uppercase tracking-[0.25em] font-semibold">Protocolo de Segurança Ativo</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer class="fixed bottom-0 w-full flex justify-center py-8 z-10">
+  <div class="text-[10px] uppercase tracking-[0.3em] flex items-center gap-4" style="color:rgba(255,255,255,0.2)">
+    <span class="w-8 h-px" style="background:rgba(255,255,255,0.1)"></span>
+    <span>© 2026 ACELIVRE — Energia Solar Compartilhada</span>
+    <span class="w-8 h-px" style="background:rgba(255,255,255,0.1)"></span>
+  </div>
+</footer>
+
+<script>
+  // Se já tem token válido, redireciona pro dashboard
+  const token = localStorage.getItem('solar_token');
+  if (token) {
+    fetch('/api/clientes', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(r => { if (r.ok) window.location.href = '/dashboard.html'; })
+      .catch(() => {});
+  }
+
+  function toggleSenha() {
+    const inp = document.getElementById('inp-senha');
+    const ico = document.getElementById('icon-vis');
+    if (inp.type === 'password') {
+      inp.type = 'text';
+      ico.textContent = 'visibility_off';
+    } else {
+      inp.type = 'password';
+      ico.textContent = 'visibility';
+    }
+  }
+
+  async function entrar() {
+    const senha  = document.getElementById('inp-senha').value;
+    const btn    = document.getElementById('btn-entrar');
+    const erro   = document.getElementById('erro-msg');
+    const texto  = document.getElementById('btn-texto');
+
+    if (!senha) {
+      erro.textContent = 'Digite a senha de acesso.';
+      erro.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    texto.textContent = 'Verificando...';
+    erro.style.display = 'none';
+
+    try {
+      const res  = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ senha }),
+      });
+      const data = await res.json();
+
+      if (data.sucesso) {
+        localStorage.setItem('solar_token', data.token);
+        window.location.href = '/dashboard.html';
+      } else {
+        erro.textContent = data.erro || 'Senha incorreta.';
+        erro.style.display = 'block';
+        btn.disabled = false;
+        texto.textContent = 'ENTRAR NO SISTEMA';
+      }
+    } catch (e) {
+      erro.textContent = 'Erro ao conectar com o servidor.';
+      erro.style.display = 'block';
+      btn.disabled = false;
+      texto.textContent = 'ENTRAR NO SISTEMA';
+    }
+  }
+</script>
+</body>
+</html>

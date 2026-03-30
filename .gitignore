@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.env
+.env.*
+
+# uploads e PDFs de clientes
+uploads/
+
+# arquivos temporários e de debug
+*.log
+logs/
+texto_fatura.json
+curl
+psql
+console.log*
