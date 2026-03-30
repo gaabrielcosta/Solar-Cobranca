@@ -13,6 +13,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    outDir: '../public/react',
+    emptyOutDir: true,
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:3000',

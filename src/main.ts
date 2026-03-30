@@ -164,7 +164,17 @@ function autenticar(req: Request, res: Response, next: NextFunction) {
 // ─────────────────────────────────────────────
 //  ARQUIVOS ESTÁTICOS (públicos — login.html, dashboard.html)
 // ─────────────────────────────────────────────
+// Arquivos estáticos do React
+app.use(express.static(path.join(__dirname, '../public/react')));
+
+// Arquivos estáticos legados (logo, templates)
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Qualquer rota não reconhecida serve o React (client-side routing)
+app.get('/{*path}', (req, res, next) => {
+  if (req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(__dirname, '../public/react/index.html'));
+});
 
 // ─────────────────────────────────────────────
 //  ROTAS PROTEGIDAS
