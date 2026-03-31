@@ -5,6 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend
+} from 'recharts'
 
 interface Fatura {
   id: string
@@ -28,16 +32,20 @@ interface Usina {
 }
 
 interface Geracao {
+  id: string
   energia_gerada_kwh: number
   saldo_disponivel: number
+  saldo_anterior: number
   competencia: string
+  tarifa_kwh: number
+  usina?: { nome: string }
 }
 
-const statusConfig: Record<string, { label: string; cor: string }> = {
-  pendente: { label: 'Pendente', cor: 'text-yellow-500' },
-  paga:     { label: 'Paga',     cor: 'text-green-500' },
-  atrasada: { label: 'Atrasada', cor: 'text-red-500' },
-  enviada:  { label: 'Enviada',  cor: 'text-blue-500' },
+const statusConfig: Record<string, { label: string; cor: string; dot: string }> = {
+  pendente: { label: 'Pendente', cor: 'text-yellow-500', dot: 'bg-yellow-500' },
+  paga:     { label: 'Paga',     cor: 'text-green-500',  dot: 'bg-green-500' },
+  atrasada: { label: 'Atrasada', cor: 'text-red-500',    dot: 'bg-red-500' },
+  enviada:  { label: 'Enviada',  cor: 'text-blue-500',   dot: 'bg-blue-500' },
 }
 
 function fmtMoeda(v: number) {
@@ -46,8 +54,37 @@ function fmtMoeda(v: number) {
 
 function fmtData(d: string) {
   if (!d) return '—'
-  const [yyyy, mm, dd] = d.substring(0, 10).split('-')
-  return `${dd}/${mm}/${yyyy}`
+  return d.substring(0, 10).split('-').reverse().join('/')
+}
+
+function fmtComp(d: string) {
+  if (!d) return '—'
+  const dt = new Date(d + 'T12:00:00')
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`
+}
+
+const CustomTooltipArea = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-lg">
+      <p className="font-medium mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.name} style={{ color: p.color }}>{p.name}: {Number(p.value).toLocaleString('pt-BR')} {p.name === 'Receita' ? 'R$' : 'kWh'}</p>
+      ))}
+    </div>
+  )
+}
+
+const CustomTooltipLine = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-lg">
+      <p className="font-medium mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.name} style={{ color: p.color }}>{p.name}: {fmtMoeda(Number(p.value))}</p>
+      ))}
+    </div>
+  )
 }
 
 export default function Dashboard() {
@@ -97,6 +134,36 @@ export default function Dashboard() {
     .sort((a, b) => new Date(b.competencia).getTime() - new Date(a.competencia).getTime())
     .slice(0, 6)
 
+  // Dados para gráfico de produção mensal
+  const geracaoPorComp: Record<string, { comp: string; geracao: number; compensacao: number }> = {}
+  geracoes.forEach(g => {
+    const comp = fmtComp(g.competencia)
+    if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
+    geracaoPorComp[comp].geracao += Number(g.energia_gerada_kwh || 0)
+  })
+  faturas.forEach(f => {
+    const comp = fmtComp(f.competencia)
+    if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
+    geracaoPorComp[comp].compensacao += Number(f.kwh_alocado || 0)
+  })
+  const dadosProducao = Object.values(geracaoPorComp)
+    .sort((a, b) => a.comp.localeCompare(b.comp))
+    .slice(-8)
+    .map(d => ({ name: d.comp, Geração: Math.round(d.geracao), Compensação: Math.round(d.compensacao) }))
+
+  // Dados para gráfico de receita
+  const receitaPorComp: Record<string, { comp: string; realizado: number; projecao: number }> = {}
+  faturas.forEach(f => {
+    const comp = fmtComp(f.competencia)
+    if (!receitaPorComp[comp]) receitaPorComp[comp] = { comp, realizado: 0, projecao: 0 }
+    receitaPorComp[comp].projecao += Number(f.valor || 0)
+    if (f.status === 'paga') receitaPorComp[comp].realizado += Number(f.valor || 0)
+  })
+  const dadosReceita = Object.values(receitaPorComp)
+    .sort((a, b) => a.comp.localeCompare(b.comp))
+    .slice(-8)
+    .map(d => ({ name: d.comp, Realizado: parseFloat(d.realizado.toFixed(2)), Projeção: parseFloat(d.projecao.toFixed(2)) }))
+
   if (loading) return (
     <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">Carregando...</div>
   )
@@ -118,19 +185,15 @@ export default function Dashboard() {
               {usinas.map(u => <SelectItem key={u.id} value={u.nome}>{u.nome}</SelectItem>)}
             </SelectContent>
           </Select>
-
           <Select value={filtroMes} onValueChange={setFiltroMes}>
             <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os meses" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os meses</SelectItem>
               {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
-                <SelectItem key={m} value={m}>
-                  {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][i]}
-                </SelectItem>
+                <SelectItem key={m} value={m}>{['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][i]}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-
           <Select value={filtroAno} onValueChange={setFiltroAno}>
             <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -140,7 +203,6 @@ export default function Dashboard() {
               <SelectItem value="2026">2026</SelectItem>
             </SelectContent>
           </Select>
-
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-green-500/30 bg-green-500/5">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-xs text-green-500 font-medium">Ao vivo</span>
@@ -153,10 +215,10 @@ export default function Dashboard() {
         <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-widest mb-3">INDICADORES DE ENERGIA</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Geração Total',       valor: `${kwh_total.toLocaleString('pt-BR')} kWh`,    sub: 'kWh injetados na rede',     icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  barra: 100 },
-            { label: 'kWh Faturados',       valor: `${kwh_faturado.toLocaleString('pt-BR')} kWh`, sub: 'distribuídos aos clientes', icon: Activity,   cor: 'text-blue-500',   bg: 'bg-blue-500/10',   barra: kwh_total > 0 ? (kwh_faturado / kwh_total) * 100 : 0 },
-            { label: 'Créditos Disponíveis',valor: `${saldo_total.toLocaleString('pt-BR')} kWh`,  sub: 'saldo acumulado',           icon: TrendingUp, cor: 'text-purple-500', bg: 'bg-purple-500/10', barra: kwh_total > 0 ? (saldo_total / kwh_total) * 100 : 0 },
-            { label: 'Usinas Ativas',       valor: `${usinas.length}`,                            sub: `${usinas.reduce((a, u) => a + Number(u.potencia_kwp), 0).toFixed(1)} kWp total`, icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10', barra: 100 },
+            { label: 'Geração Total',        valor: `${kwh_total.toLocaleString('pt-BR')} kWh`,    sub: 'kWh injetados na rede',     icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  barra: 100 },
+            { label: 'kWh Faturados',        valor: `${kwh_faturado.toLocaleString('pt-BR')} kWh`, sub: 'distribuídos aos clientes', icon: Activity,   cor: 'text-blue-500',   bg: 'bg-blue-500/10',   barra: kwh_total > 0 ? (kwh_faturado / kwh_total) * 100 : 0 },
+            { label: 'Créditos Disponíveis', valor: `${saldo_total.toLocaleString('pt-BR')} kWh`,  sub: 'saldo acumulado',           icon: TrendingUp, cor: 'text-purple-500', bg: 'bg-purple-500/10', barra: kwh_total > 0 ? (saldo_total / kwh_total) * 100 : 0 },
+            { label: 'Usinas Ativas',        valor: `${usinas.length}`,                            sub: `${usinas.reduce((a, u) => a + Number(u.potencia_kwp), 0).toFixed(1)} kWp total`, icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10', barra: 100 },
           ].map(k => {
             const Icon = k.icon
             return (
@@ -205,6 +267,65 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* Gráficos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Produção Mensal */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold">Produção Mensal de Energia</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Geração vs. compensação (kWh)</p>
+          </div>
+          {dadosProducao.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">Sem dados de geração</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={dadosProducao} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="colorGeracao" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCompensacao" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <Tooltip content={<CustomTooltipArea />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="Geração" stroke="#22c55e" fill="url(#colorGeracao)" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} />
+                <Area type="monotone" dataKey="Compensação" stroke="#3b82f6" fill="url(#colorCompensacao)" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Projeção de Receita */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold">Projeção de Receita</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Realizado vs. projeção (R$)</p>
+          </div>
+          {dadosReceita.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">Sem dados de receita</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={dadosReceita} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltipLine />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="Realizado" stroke="#22c55e" strokeWidth={2} dot={{ r: 4, fill: '#22c55e' }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Projeção" stroke="#a855f7" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#a855f7' }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
       {/* Últimas cobranças + Usinas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="md:col-span-2 rounded-xl border border-border bg-card">
@@ -223,9 +344,9 @@ export default function Dashboard() {
             </thead>
             <tbody>
               {ultimasFaturas.length === 0 ? (
-                <tr><td colSpan={4} className="text-center py-8 text-muted-foreground text-xs">Nenhuma fatura no período selecionado</td></tr>
+                <tr><td colSpan={4} className="text-center py-8 text-muted-foreground text-xs">Nenhuma fatura no período</td></tr>
               ) : ultimasFaturas.map((f, i) => {
-                const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground' }
+                const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground', dot: 'bg-muted-foreground' }
                 return (
                   <tr key={f.id} onClick={() => navigate('/faturas')}
                     className={cn('border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors', i % 2 === 0 ? 'bg-background' : 'bg-muted/10')}
@@ -242,8 +363,8 @@ export default function Dashboard() {
                     <td className="px-5 py-3 text-muted-foreground">{fmtData(f.data_vencimento)}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5">
-                        <div className={`w-1.5 h-1.5 rounded-full ${st.cor.replace('text-', 'bg-')}`} />
-                        <span className={`text-xs font-medium ${st.cor}`}>{st.label}</span>
+                        <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
+                        <span className={cn('text-xs font-medium', st.cor)}>{st.label}</span>
                       </div>
                     </td>
                   </tr>
