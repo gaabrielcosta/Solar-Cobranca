@@ -346,7 +346,6 @@ return (
                 </tr>
               ) : (
                 filtradas.map((f, i) => {
-                  const st = statusConfig[f.status] || { label: f.status, variant: 'outline' as const }
                   return (
                     <tr
                       key={f.id}
