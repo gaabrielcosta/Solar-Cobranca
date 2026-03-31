@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -26,12 +25,12 @@ interface Fatura {
   }
 }
 
-const statusConfig: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  pendente:  { label: 'Pendente',  variant: 'outline' },
-  paga:      { label: 'Paga',      variant: 'default' },
-  atrasada:  { label: 'Atrasada',  variant: 'destructive' },
-  enviada:   { label: 'Enviada',   variant: 'secondary' },
-  negociada: { label: 'Negociada', variant: 'secondary' },
+const statusConfig: Record<string, { label: string; cor: string; bg: string; dot: string }> = {
+  pendente:  { label: 'Pendente',  cor: 'text-yellow-500', bg: 'bg-yellow-500/10', dot: 'bg-yellow-500' },
+  paga:      { label: 'Paga',      cor: 'text-green-500',  bg: 'bg-green-500/10',  dot: 'bg-green-500' },
+  atrasada:  { label: 'Atrasada',  cor: 'text-red-500',    bg: 'bg-red-500/10',    dot: 'bg-red-500' },
+  enviada:   { label: 'Enviada',   cor: 'text-blue-500',   bg: 'bg-blue-500/10',   dot: 'bg-blue-500' },
+  negociada: { label: 'Negociada', cor: 'text-purple-500', bg: 'bg-purple-500/10', dot: 'bg-purple-500' },
 }
 
 
@@ -299,14 +298,14 @@ return (
 
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: 'Total',     valor: total,     cor: 'text-foreground' },
-          { label: 'Pendentes', valor: pendentes,  cor: 'text-yellow-500' },
-          { label: 'Pagas',     valor: pagas,      cor: 'text-green-500' },
-          { label: 'Atrasadas', valor: atrasadas,  cor: 'text-red-500' },
+          { label: 'Total',     valor: total,     cor: 'text-foreground',  bg: 'bg-muted/50',        border: 'border-border' },
+          { label: 'Pendentes', valor: pendentes, cor: 'text-yellow-500',  bg: 'bg-yellow-500/5',    border: 'border-yellow-500/20' },
+          { label: 'Pagas',     valor: pagas,     cor: 'text-green-500',   bg: 'bg-green-500/5',     border: 'border-green-500/20' },
+          { label: 'Atrasadas', valor: atrasadas, cor: 'text-red-500',     bg: 'bg-red-500/5',       border: 'border-red-500/20' },
         ].map(card => (
-          <div key={card.label} className="rounded-lg border border-border bg-card p-4">
-            <p className="text-xs text-muted-foreground mb-1">{card.label}</p>
-            <p className={cn('text-2xl font-semibold', card.cor)}>{card.valor}</p>
+          <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-4`}>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{card.label}</p>
+            <p className={cn('text-3xl font-bold', card.cor)}>{card.valor}</p>
           </div>
         ))}
       </div>
@@ -358,14 +357,29 @@ return (
                         i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
                       )}
                     >
-                      <td className="px-4 py-3 font-medium">{f.beneficiario?.cliente?.nome || '—'}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">
+                            {(f.beneficiario?.cliente?.nome || '?').substring(0, 2).toUpperCase()}
+                          </div>
+                          <span className="font-medium">{f.beneficiario?.cliente?.nome || '—'}</span>
+                        </div>
+                      </td>
                       <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{f.beneficiario?.uc_beneficiaria || '—'}</td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtComp(f.competencia)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{fmtData(f.data_vencimento)}</td>
                       <td className="px-4 py-3 text-muted-foreground">{Number(f.kwh_alocado).toFixed(0)} kWh</td>
                       <td className="px-4 py-3 font-medium">{fmtMoeda(f.valor)}</td>
                       <td className="px-4 py-3">
-                        <Badge variant={st.variant}>{st.label}</Badge>
+                        {(() => {
+                          const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground', bg: 'bg-muted', dot: 'bg-muted-foreground' }
+                          return (
+                            <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${st.bg} ${st.cor}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                              {st.label}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">

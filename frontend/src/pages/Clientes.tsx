@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -73,8 +72,22 @@ export default function Clientes() {
     setClientes(r.data || [])
   }
 
+  const [idsAlocados, setIdsAlocados] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     carregar().finally(() => setLoading(false))
+    apiFetch<{ data: any[] }>('/api/usinas')
+      .then(async r => {
+        const ids = new Set<string>()
+        for (const u of r.data || []) {
+          const benef = await apiFetch<any>(`/api/usinas/${u.id}/beneficiarios`)
+          const lista = benef?.data?.beneficiarios || []
+          lista.filter((b: any) => b.ativo).forEach((b: any) => {
+            if (b.cliente?.id) ids.add(b.cliente.id)
+          })
+        }
+        setIdsAlocados(ids)
+      })
   }, [])
 
   function atualizarForm(campo: keyof NovoCliente, valor: string) {
@@ -204,44 +217,76 @@ async function salvarEdicao() {
       {loading ? (
         <div className="text-muted-foreground text-sm">Carregando...</div>
       ) : (
-        <div className="rounded-lg border border-border overflow-hidden">
+        <div className="rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-muted text-muted-foreground">
-                <th className="text-left px-4 py-3 font-medium">Nome</th>
+              <tr className="bg-muted text-muted-foreground text-xs uppercase tracking-wide">
+                <th className="text-left px-4 py-3 font-medium">Cliente</th>
                 <th className="text-left px-4 py-3 font-medium">Telefone</th>
                 <th className="text-left px-4 py-3 font-medium">Cidade</th>
+                <th className="text-left px-4 py-3 font-medium">Desconto</th>
                 <th className="text-left px-4 py-3 font-medium">Status</th>
+                <th className="text-left px-4 py-3 font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtrados.length === 0 ? (
-            <tr>
-                <td colSpan={4} className="text-center py-12 text-muted-foreground">
-                Nenhum cliente encontrado
-                </td>
-            </tr>
-            ) : (
-            filtrados.map((c, i) => (
-                <tr
-                key={c.id}
-                onClick={() => abrirEditar(c)}
-                className={cn(
-                    'border-t border-border transition-colors hover:bg-muted/50 cursor-pointer',
-                    i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
-                )}
-                >
-                <td className="px-4 py-3 font-medium">{c.nome}</td>
-                <td className="px-4 py-3 text-muted-foreground">{c.telefone || '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">{c.cidade || '—'}</td>
-                <td className="px-4 py-3">
-                    <Badge variant={c.ativo ? 'default' : 'secondary'}>
-                    {c.ativo ? 'Ativo' : 'Inativo'}
-                    </Badge>
-                </td>
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-muted-foreground">
+                    Nenhum cliente encontrado
+                  </td>
                 </tr>
-            ))
-            )}  
+              ) : (
+                filtrados.map((c, i) => (
+                  <tr
+                    key={c.id}
+                    className={cn(
+                      'border-t border-border transition-colors hover:bg-muted/50',
+                      i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
+                    )}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
+                          {c.nome.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium">{c.nome}</p>
+                          {c.email && <p className="text-xs text-muted-foreground">{c.email}</p>}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.telefone || '—'}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.cidade || '—'}{c.estado_endereco ? ` / ${c.estado_endereco}` : ''}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-green-500">{Number(c.desconto_percentual || 0).toFixed(0)}%</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const temBenef = idsAlocados.has(c.id)
+                        return (
+                          <div className={cn(
+                            'inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium',
+                            temBenef ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'
+                          )}>
+                            <div className={cn('w-1.5 h-1.5 rounded-full', temBenef ? 'bg-green-500' : 'bg-muted-foreground')} />
+                            {temBenef ? 'Alocado' : 'Sem usina'}
+                          </div>
+                        )
+                      })()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => abrirEditar(c)}
+                        className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                        title="Editar cliente"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
