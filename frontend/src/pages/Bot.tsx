@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { RefreshCw, Wifi, WifiOff, Play, MessageSquare, Settings, CheckCircle, XCircle, Clock, RotateCcw } from 'lucide-react'
+import { RefreshCw, Wifi, WifiOff, Play, MessageSquare, Settings, RotateCcw } from 'lucide-react'
 import { apiFetch } from '@/hooks/useApi'
 import { cn } from '@/lib/utils'
 
