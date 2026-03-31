@@ -189,33 +189,25 @@ export default function Usinas() {
       {subTab === 'usinas' && (
         <>
           <div className="grid grid-cols-3 gap-4">
-            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
-                <Sun size={20} className="text-yellow-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Total de usinas</p>
-                <p className="text-2xl font-semibold">{usinas.length}</p>
-              </div>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <Zap size={20} className="text-blue-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Potência total</p>
-                <p className="text-2xl font-semibold">{potenciaTotal.toFixed(1)} <span className="text-sm font-normal text-muted-foreground">kWp</span></p>
-              </div>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                <Users size={20} className="text-green-500" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Distribuidoras</p>
-                <p className="text-2xl font-semibold">{new Set(usinas.map(u => u.distribuidora)).size}</p>
-              </div>
-            </div>
+            {[
+              { label: 'Total de usinas', valor: usinas.length,          sub: 'plantas cadastradas',   icon: Sun,   cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+              { label: 'Potência total',  valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap,   cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
+              { label: 'Distribuidoras',  valor: new Set(usinas.map(u => u.distribuidora)).size, sub: 'concessionárias', icon: Users, cor: 'text-green-500',  bg: 'bg-green-500/10' },
+            ].map(k => {
+              const Icon = k.icon
+              return (
+                <div key={k.label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${k.bg}`}>
+                    <Icon size={18} className={k.cor} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{k.label}</p>
+                    <p className={`text-2xl font-bold ${k.cor}`}>{k.valor}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
           <div className="relative">
@@ -266,7 +258,14 @@ export default function Usinas() {
                         <td className="px-4 py-3 text-muted-foreground">{u.cidade || '—'}{u.estado ? ` / ${u.estado}` : ''}</td>
                         <td className="px-4 py-3 text-muted-foreground">{u.distribuidora}</td>
                         <td className="px-4 py-3">
-                          <Badge variant="outline">{u.tipo}</Badge>
+                          <span className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                            u.tipo === 'propria' ? 'bg-green-500/10 text-green-500' :
+                              u.tipo === 'arrendada' ? 'bg-blue-500/10 text-blue-500' :
+                                'bg-purple-500/10 text-purple-500'
+                          )}>
+                            {u.tipo}
+                          </span>
                         </td>
                       </tr>
                     ))

@@ -12,7 +12,6 @@ import {
   LogOut,
   Upload,
   Zap,
-  FileUp,
 } from 'lucide-react'
 import { useTheme } from '@/components/ThemeProvider'
 
@@ -35,10 +34,9 @@ const grupos = [
   {
     label: 'OPERAÇÕES',
     itens: [
-      { icon: FileUp,        label: 'PDF Usina',  path: '/upload?aba=usina' },
-      { icon: Upload,        label: 'PDF Fatura', path: '/upload?aba=cliente' },
-      { icon: Zap,           label: 'Créditos kWh', path: '/usinas?tab=creditos' },
-      { icon: ClipboardList, label: 'Log',        path: '/logs' },
+      { icon: Upload,        label: 'Upload de PDFs', path: '/upload' },
+      { icon: Zap,           label: 'Créditos kWh',   path: '/creditos' },
+      { icon: ClipboardList, label: 'Log',             path: '/logs' },
     ],
   },
   {
