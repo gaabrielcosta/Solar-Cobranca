@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Search, Plus, Sun, Zap, Users } from 'lucide-react'
+import { Search, Plus, Sun, Zap, Users, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch } from '@/hooks/useApi'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -22,56 +22,53 @@ interface Usina {
 }
 
 export default function Usinas() {
-  const [usinas, setUsinas] = useState<Usina[]>([])
-  const [busca, setBusca] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [subTab, setSubTab] = useState<'usinas' | 'creditos' | 'geracao'>('usinas')
-  const [creditos, setCreditos] = useState<any[]>([])
-  const [loadingCreditos, setLoadingCreditos] = useState(false)
-  const [geracoes, setGeracoes] = useState<any[]>([])
+  const [usinas,          setUsinas]          = useState<Usina[]>([])
+  const [busca,           setBusca]           = useState('')
+  const [loading,         setLoading]         = useState(true)
+  const [subTab,          setSubTab]          = useState<'usinas' | 'geracao'>('usinas')
+  const [geracoes,        setGeracoes]        = useState<any[]>([])
   const [loadingGeracoes, setLoadingGeracoes] = useState(false)
-  const [usinaFiltroGer, setUsinaFiltroGer] = useState('')
+  const [usinaFiltroGer,  setUsinaFiltroGer]  = useState('all')
+  const [removendoBenef,  setRemovendoBenef]  = useState<string | null>(null)
 
-  const [modalNova, setModalNova] = useState(false)
+  const [modalNova,     setModalNova]     = useState(false)
   const [loadingSalvar, setLoadingSalvar] = useState(false)
-  const [erro, setErro] = useState('')
+  const [erro,          setErro]          = useState('')
   const [form, setForm] = useState({
     nome: '', potencia_kwp: '', distribuidora: '',
     uc_geradora: '', cidade: '', estado: '', tipo: 'propria'
   })
-  const [modalBenef, setModalBenef] = useState(false)
+
+  const [modalBenef,    setModalBenef]    = useState(false)
   const [usinaSelecionada, setUsinaSelecionada] = useState<Usina | null>(null)
   const [beneficiarios, setBeneficiarios] = useState<any[]>([])
-  const [loadingBenef, setLoadingBenef] = useState(false)
+  const [loadingBenef,  setLoadingBenef]  = useState(false)
 
-  const [modalAddBenef, setModalAddBenef] = useState(false)
-  const [clientes, setClientes] = useState<{ id: string; nome: string }[]>([])
-  const [loadingAddBenef, setLoadingAddBenef] = useState(false)
-  const [erroAddBenef, setErroAddBenef] = useState('')
+  const [modalAddBenef,  setModalAddBenef]  = useState(false)
+  const [clientes,       setClientes]       = useState<{ id: string; nome: string }[]>([])
+  const [loadingAddBenef,setLoadingAddBenef]= useState(false)
+  const [erroAddBenef,   setErroAddBenef]   = useState('')
   const [formBenef, setFormBenef] = useState({
-    cliente_id: '',
-    uc_beneficiaria: '',
-    desconto_percentual: '0',
-    dia_vencimento: '10',
+    cliente_id: '', uc_beneficiaria: '', desconto_percentual: '0', dia_vencimento: '10',
   })
+
+  async function carregarTodasGeracoes() {
+    setLoadingGeracoes(true)
+    const r = await apiFetch<{ data: any[] }>('/api/geracoes')
+    setGeracoes(r.data || [])
+    setLoadingGeracoes(false)
+  }
 
   async function carregar() {
     const r = await apiFetch<{ data: Usina[] }>('/api/usinas')
     setUsinas(r.data || [])
   }
 
-  async function carregarCreditos() {
-    setLoadingCreditos(true)
-    const r = await apiFetch<{ data: any[] }>('/api/creditos')
-    setCreditos(r.data || [])
-    setLoadingCreditos(false)
-  }
-
   async function carregarGeracoes(usinaId: string) {
     if (!usinaId) return
     setLoadingGeracoes(true)
-    const r = await apiFetch<any[]>(`/api/geracoes/usina/${usinaId}`)
-    setGeracoes(Array.isArray(r) ? r : [])
+    const r = await apiFetch<{ data: any[] }>(`/api/geracoes/usina/${usinaId}`)
+    setGeracoes(r.data || [])
     setLoadingGeracoes(false)
   }
 
@@ -136,10 +133,23 @@ export default function Usinas() {
     }
   }
 
+  async function removerBeneficiario(benefId: string) {
+    if (!usinaSelecionada) return
+    setRemovendoBenef(benefId)
+    try {
+      await apiFetch(`/api/usinas/${usinaSelecionada.id}/beneficiarios/${benefId}`, { method: 'DELETE' })
+      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${usinaSelecionada.id}/beneficiarios`)
+      setBeneficiarios((r as any).data?.beneficiarios || [])
+    } finally {
+      setRemovendoBenef(null)
+    }
+  }
+
   useEffect(() => {
     carregar().finally(() => setLoading(false))
     apiFetch<{ data: { id: string; nome: string }[] }>('/api/clientes')
       .then(r => setClientes(r.data || []))
+    carregarTodasGeracoes()
   }, [])
 
   const filtradas = usinas.filter(u =>
@@ -166,15 +176,11 @@ export default function Usinas() {
       <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
         {[
           { label: 'Usinas', value: 'usinas' },
-          { label: 'Créditos kWh', value: 'creditos' },
           { label: 'Histórico Geração', value: 'geracao' },
         ].map((t, i) => (
           <button
             key={t.value}
-            onClick={() => {
-              setSubTab(t.value as any)
-              if (t.value === 'creditos') carregarCreditos()
-            }}
+            onClick={() => setSubTab(t.value as any)}
             className={cn(
               'px-4 py-2 text-sm font-medium transition-colors',
               i > 0 && 'border-l border-border',
@@ -190,9 +196,9 @@ export default function Usinas() {
         <>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { label: 'Total de usinas', valor: usinas.length,          sub: 'plantas cadastradas',   icon: Sun,   cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-              { label: 'Potência total',  valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap,   cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
-              { label: 'Distribuidoras',  valor: new Set(usinas.map(u => u.distribuidora)).size, sub: 'concessionárias', icon: Users, cor: 'text-green-500',  bg: 'bg-green-500/10' },
+              { label: 'Total de usinas', valor: usinas.length, sub: 'plantas cadastradas', icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+              { label: 'Potência total', valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap, cor: 'text-blue-500', bg: 'bg-blue-500/10' },
+              { label: 'Distribuidoras', valor: new Set(usinas.map(u => u.distribuidora)).size, sub: 'concessionárias', icon: Users, cor: 'text-green-500', bg: 'bg-green-500/10' },
             ].map(k => {
               const Icon = k.icon
               return (
@@ -238,19 +244,14 @@ export default function Usinas() {
                 <tbody>
                   {filtradas.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                        Nenhuma usina encontrada
-                      </td>
+                      <td colSpan={6} className="text-center py-12 text-muted-foreground">Nenhuma usina encontrada</td>
                     </tr>
                   ) : (
                     filtradas.map((u, i) => (
                       <tr
                         key={u.id}
                         onClick={() => abrirBeneficiarios(u)}
-                        className={cn(
-                          'border-t border-border transition-colors hover:bg-muted/50 cursor-pointer',
-                          i % 2 === 0 ? 'bg-background' : 'bg-muted/20'
-                        )}
+                        className={cn('border-t border-border transition-colors hover:bg-muted/50 cursor-pointer', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}
                       >
                         <td className="px-4 py-3 font-medium">{u.nome}</td>
                         <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.uc_geradora}</td>
@@ -261,8 +262,8 @@ export default function Usinas() {
                           <span className={cn(
                             'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
                             u.tipo === 'propria' ? 'bg-green-500/10 text-green-500' :
-                              u.tipo === 'arrendada' ? 'bg-blue-500/10 text-blue-500' :
-                                'bg-purple-500/10 text-purple-500'
+                            u.tipo === 'arrendada' ? 'bg-blue-500/10 text-blue-500' :
+                            'bg-purple-500/10 text-purple-500'
                           )}>
                             {u.tipo}
                           </span>
@@ -277,45 +278,17 @@ export default function Usinas() {
         </>
       )}
 
-      {subTab === 'creditos' && (
-        <div className="flex flex-col gap-4">
-          {loadingCreditos ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
-          ) : creditos.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-12 text-center">Nenhum crédito registrado</p>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted text-muted-foreground">
-                    <th className="text-left px-4 py-3 font-medium">Cliente</th>
-                    <th className="text-left px-4 py-3 font-medium">UC</th>
-                    <th className="text-left px-4 py-3 font-medium">Saldo kWh</th>
-                    <th className="text-left px-4 py-3 font-medium">Competência</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {creditos.map((c: any, i: number) => (
-                    <tr key={c.id || i} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
-                      <td className="px-4 py-3 font-medium">{c.beneficiario?.cliente?.nome || c.cliente_nome || '—'}</td>
-                      <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{c.beneficiario?.uc_beneficiaria || c.uc_beneficiaria || '—'}</td>
-                      <td className="px-4 py-3 font-medium">{Number(c.saldo_kwh || c.credito_kwh || 0).toFixed(0)} kWh</td>
-                      <td className="px-4 py-3 text-muted-foreground">{c.competencia?.substring(0, 7) || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       {subTab === 'geracao' && (
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
-            <Select value={usinaFiltroGer} onValueChange={v => { setUsinaFiltroGer(v); carregarGeracoes(v) }}>
-              <SelectTrigger className="w-52"><SelectValue placeholder="Selecione a usina..." /></SelectTrigger>
+            <Select value={usinaFiltroGer} onValueChange={v => {
+              setUsinaFiltroGer(v)
+              if (v === 'all') carregarTodasGeracoes()
+              else carregarGeracoes(v)
+            }}>
+              <SelectTrigger className="w-52"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">Todas as usinas</SelectItem>
                 {usinas.map(u => (
                   <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
                 ))}
@@ -323,9 +296,7 @@ export default function Usinas() {
             </Select>
           </div>
 
-          {!usinaFiltroGer ? (
-            <p className="text-sm text-muted-foreground py-12 text-center">Selecione uma usina para ver o histórico</p>
-          ) : loadingGeracoes ? (
+          {loadingGeracoes ? (
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : geracoes.length === 0 ? (
             <p className="text-sm text-muted-foreground py-12 text-center">Nenhuma geração registrada</p>
@@ -356,11 +327,10 @@ export default function Usinas() {
         </div>
       )}
 
+      {/* Modal nova usina */}
       <Dialog open={modalNova} onOpenChange={setModalNova}>
         <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nova usina</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Nova usina</DialogTitle></DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-1.5">
               <Label>Nome *</Label>
@@ -405,13 +375,12 @@ export default function Usinas() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalNova(false)}>Cancelar</Button>
-            <Button onClick={salvarUsina} disabled={loadingSalvar}>
-              {loadingSalvar ? 'Salvando...' : 'Salvar usina'}
-            </Button>
+            <Button onClick={salvarUsina} disabled={loadingSalvar}>{loadingSalvar ? 'Salvando...' : 'Salvar usina'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Modal beneficiários */}
       <Dialog open={modalBenef} onOpenChange={setModalBenef}>
         <DialogContent className="!max-w-3xl">
           <DialogHeader>
@@ -423,7 +392,7 @@ export default function Usinas() {
             ) : beneficiarios.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">Nenhum beneficiário cadastrado</p>
             ) : (
-              <div className="rounded-lg border border-border overflow-auto max-h-[80vh]">
+              <div className="rounded-lg border border-border overflow-auto max-h-[70vh]">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-muted text-muted-foreground whitespace-nowrap">
@@ -432,17 +401,28 @@ export default function Usinas() {
                       <th className="text-left px-4 py-3 font-medium">Rateio</th>
                       <th className="text-left px-4 py-3 font-medium">Desconto</th>
                       <th className="text-left px-4 py-3 font-medium">Status</th>
+                      <th className="text-left px-4 py-3 font-medium">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
                     {beneficiarios.map((b: any, i: number) => (
                       <tr key={b.id} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
-                        <td className="px-4 py-3 font-medium max-w-[180px] truncate">{b.cliente?.nome || '—'}</td>
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">{b.cliente?.nome || '—'}</td>
                         <td className="px-4 py-3 text-muted-foreground font-mono text-xs whitespace-nowrap">{b.uc_beneficiaria}</td>
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.percentual_rateio).toFixed(1)}%</td>
                         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.desconto_percentual).toFixed(1)}%</td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <Badge variant={b.ativo ? 'default' : 'secondary'}>{b.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => removerBeneficiario(b.id)}
+                            disabled={removendoBenef === b.id}
+                            className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive disabled:opacity-50"
+                            title="Remover beneficiário"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -453,13 +433,12 @@ export default function Usinas() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalBenef(false)}>Fechar</Button>
-            <Button onClick={() => { setModalBenef(false); setModalAddBenef(true) }}>
-              Adicionar beneficiário
-            </Button>
+            <Button onClick={() => { setModalBenef(false); setModalAddBenef(true) }}>Adicionar beneficiário</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Modal adicionar beneficiário */}
       <Dialog open={modalAddBenef} onOpenChange={setModalAddBenef}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -471,9 +450,7 @@ export default function Usinas() {
               <Select value={formBenef.cliente_id} onValueChange={v => setFormBenef(p => ({ ...p, cliente_id: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
                 <SelectContent>
-                  {clientes.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
-                  ))}
+                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -495,9 +472,7 @@ export default function Usinas() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setModalAddBenef(false); setModalBenef(true) }}>Cancelar</Button>
-            <Button onClick={salvarBeneficiario} disabled={loadingAddBenef}>
-              {loadingAddBenef ? 'Salvando...' : 'Adicionar'}
-            </Button>
+            <Button onClick={salvarBeneficiario} disabled={loadingAddBenef}>{loadingAddBenef ? 'Salvando...' : 'Adicionar'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
