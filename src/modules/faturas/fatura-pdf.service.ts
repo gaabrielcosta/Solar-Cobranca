@@ -79,10 +79,11 @@ export async function gerarFaturaPDF(dados: DadosFaturaPDF): Promise<Buffer> {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({
-      format: 'A4',
       printBackground: true,
       margin: { top: '0', right: '0', bottom: '0', left: '0' },
-    });
+      width: '210mm',
+      height: '580px',
+    })
     return Buffer.from(pdf);
   } finally {
     await browser.close();
@@ -133,7 +134,11 @@ function renderizarHTML(d: DadosFaturaPDF): string {
     'utf8'
   );
 
+  const logoPath = path.join(__dirname, '..', '..', '..', 'public', 'acelivre_logo.png')
+  const logoBase64 = `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`
+
   return template
+    .replace(/{{LOGO_BASE64}}/g, logoBase64)
     // Identificação
     .replace(/{{NUMERO_FATURA}}/g,           d.numero_fatura)
     .replace(/{{COMPETENCIA}}/g,             competenciaExtenso(d.competencia))
@@ -151,7 +156,7 @@ function renderizarHTML(d: DadosFaturaPDF): string {
     .replace(/{{KWH_CONSUMO}}/g,             d.kwh_consumo_energisa.toLocaleString('pt-BR'))
 
     // Tarifas
-    .replace(/{{TARIFA_KWH}}/g,              brl(d.tarifa_kwh))
+    .replace(/{{TARIFA_KWH}}/g, d.tarifa_kwh.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 6 }))
     .replace(/{{TARIFA_B1}}/g,               brl(tarifaB1))
     .replace(/{{TARIFA_COM_DESCONTO}}/g,     brl(tarifaB1))
     .replace(/{{DESCONTO_PCT}}/g,            d.desconto_pct.toString())

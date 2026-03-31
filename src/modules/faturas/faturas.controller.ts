@@ -494,8 +494,10 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
       data_emissao:         fmtData(fatura.created_at),
       data_vencimento:      fatura.data_vencimento ? fmtData(fatura.data_vencimento) : fmtData(fatura.competencia),
       cliente_nome:         cl.nome,
-      cliente_cpf:          (cl as any).cpf || '',
-      cliente_endereco:     (cl as any).endereco || '',
+      cliente_cpf: cl.cpf_cnpj 
+        ? cl.cpf_cnpj.replace(/\D/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.***.***-$4')
+        : '',
+      cliente_endereco:     [cl.logradouro, cl.numero, cl.bairro, cl.cidade, cl.estado_endereco].filter(Boolean).join(', '),
       uc_beneficiaria:      b.uc_beneficiaria,
       kwh_compensado:       Number(fatura.kwh_alocado),
       tarifa_kwh:           Number(fatura.tarifa_kwh),
