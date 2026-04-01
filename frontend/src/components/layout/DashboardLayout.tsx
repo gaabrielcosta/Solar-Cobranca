@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './Sidebar'
-import { Menu } from 'lucide-react'
+import { Menu, Search, Bell } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarAberta, setSidebarAberta] = useState(false)
 
-  // Fecha sidebar ao redimensionar para desktop
   useEffect(() => {
     function onResize() {
       if (window.innerWidth >= 1024) setSidebarAberta(false)
@@ -15,17 +14,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [])
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen" style={{ background: 'var(--hc-bg)' }}>
 
-      {/* Overlay mobile */}
       {sidebarAberta && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          onClick={() => setSidebarAberta(false)}
-        />
+        <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setSidebarAberta(false)} />
       )}
 
-      {/* Sidebar — fixa em desktop, drawer em mobile */}
       <div className={`
         fixed inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out
         lg:relative lg:translate-x-0 lg:flex lg:flex-shrink-0
@@ -34,28 +28,57 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Sidebar onClose={() => setSidebarAberta(false)} />
       </div>
 
-      {/* Conteúdo principal */}
-      <main className="flex-1 overflow-auto">
-        {/* Header mobile com hambúrguer */}
-        <div className="sticky top-0 z-20 flex items-center gap-3 px-4 py-3 border-b border-border bg-background/95 backdrop-blur lg:hidden">
-          <button
-            onClick={() => setSidebarAberta(true)}
-            className="p-2 rounded-lg hover:bg-muted transition-colors"
-          >
-            <Menu size={20} />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center flex-shrink-0">
-              <span className="text-[10px] font-bold text-primary-foreground">A</span>
-            </div>
-            <span className="text-sm font-bold">ACELIVRE</span>
-          </div>
-        </div>
+      <div className="flex-1 flex flex-col min-w-0">
 
-        <div className="p-4 lg:p-6">
+        {/* Header */}
+        <header
+          className="sticky top-0 z-20 flex items-center justify-between px-4 lg:px-6 h-14"
+          style={{ background: 'var(--hc-surface)', borderBottom: '1px solid var(--hc-border)' }}
+        >
+          <div className="flex items-center gap-3 flex-1">
+            <button
+              onClick={() => setSidebarAberta(true)}
+              className="lg:hidden p-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--hc-text3)' }}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="relative hidden sm:flex items-center max-w-xs w-full">
+              <Search size={14} className="absolute left-3" style={{ color: 'var(--hc-text3)' }} />
+              <input
+                type="text"
+                placeholder="Buscar beneficiário ou fatura..."
+                className="w-full h-8 pl-8 pr-3 rounded-lg text-xs focus:outline-none transition-colors"
+                style={{
+                  background: 'var(--hc-input-bg)',
+                  border: '1px solid var(--hc-border)',
+                  color: 'var(--hc-text1)',
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button className="p-2 rounded-lg transition-colors relative" style={{ color: 'var(--hc-text2)' }}>
+              <Bell size={18} />
+              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-green-400" />
+            </button>
+            <div className="flex items-center gap-2 pl-2 ml-1" style={{ borderLeft: '1px solid var(--hc-border)' }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: 'rgba(80,200,120,0.15)', border: '1px solid rgba(80,200,120,0.25)' }}>
+                <span className="text-[10px] font-bold" style={{ color: 'var(--hc-accent)' }}>AD</span>
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-xs font-medium leading-none" style={{ color: 'var(--hc-text1)' }}>Administrador</p>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--hc-text3)' }}>acelivre.com.br</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-auto p-4 lg:p-6">
           {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   )
 }

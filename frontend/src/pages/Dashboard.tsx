@@ -292,7 +292,7 @@ export default function Dashboard() {
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--hc-divider)" />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <Tooltip content={<CustomTooltipArea />} />
@@ -315,7 +315,7 @@ export default function Dashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={dadosReceita} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--hc-divider)" />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
                 <Tooltip content={<CustomTooltipLine />} />

@@ -1,18 +1,8 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard,
-  BarChart2,
-  Users,
-  FileText,
-  Sun,
-  Moon,
-  Bot,
-  ClipboardList,
-  LogOut,
-  Upload,
-  Zap,
-  X,
+  LayoutDashboard, BarChart2, Users, FileText, Sun, Moon,
+  Bot, ClipboardList, LogOut, Upload, Zap, X,
 } from 'lucide-react'
 import { useTheme } from '@/components/ThemeProvider'
 
@@ -53,8 +43,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ onClose }: SidebarProps) {
-  const navigate  = useNavigate()
-  const location  = useLocation()
+  const navigate = useNavigate()
+  const location = useLocation()
   const { theme, toggleTheme } = useTheme()
 
   function sair() {
@@ -73,32 +63,31 @@ export default function Sidebar({ onClose }: SidebarProps) {
   }
 
   return (
-    <aside className="flex flex-col w-52 min-h-screen bg-card border-r border-border">
+    <aside
+      className="flex flex-col w-52 h-screen sticky top-0"
+      style={{ background: 'var(--hc-surface)', borderRight: '1px solid var(--hc-border)' }}
+    >
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 py-5 border-b border-border">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-          <Zap size={16} className="text-primary-foreground" />
+      <div className="flex items-center gap-2.5 px-4 py-4" style={{ borderBottom: '1px solid var(--hc-border)' }}>
+        <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center flex-shrink-0">
+          <Zap size={15} className="text-black" fill="black" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-bold leading-none">ACELIVRE</p>
-          <p className="text-[10px] text-muted-foreground mt-0.5">Backoffice v1.0</p>
+          <p className="text-sm font-bold leading-none tracking-wide" style={{ color: 'var(--hc-text1)' }}>ACELIVRE</p>
+          <p className="text-[10px] mt-0.5 tracking-wide" style={{ color: 'var(--hc-accent)', opacity: 0.7 }}>BACKOFFICE V1.0</p>
         </div>
-        {/* Botão fechar — só aparece em mobile */}
         {onClose && (
-          <button
-            onClick={onClose}
-            className="lg:hidden p-1 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
-          >
-            <X size={16} />
+          <button onClick={onClose} className="lg:hidden p-1 rounded" style={{ color: 'var(--hc-text3)' }}>
+            <X size={15} />
           </button>
         )}
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-col gap-4 flex-1 px-3 py-4 overflow-y-auto">
+      <nav className="flex flex-col gap-3 flex-1 px-3 py-3 overflow-y-auto">
         {grupos.map(grupo => (
           <div key={grupo.label}>
-            <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-widest px-2 mb-1">
+            <p className="text-[9px] font-semibold tracking-widest px-2 mb-1" style={{ color: 'var(--hc-text3)' }}>
               {grupo.label}
             </p>
             <div className="flex flex-col gap-0.5">
@@ -108,14 +97,18 @@ export default function Sidebar({ onClose }: SidebarProps) {
                   <button
                     key={path}
                     onClick={() => navegar(path)}
-                    className={cn(
-                      'w-full flex items-center gap-3 px-3 h-9 rounded-lg text-sm transition-colors text-left',
-                      ativo
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    )}
+                    style={ativo ? {
+                      background: 'linear-gradient(90deg, rgba(80,200,120,0.12) 0%, transparent 100%)',
+                      borderLeft: '3px solid var(--hc-accent)',
+                      color: 'var(--hc-accent)',
+                      fontWeight: 600,
+                    } : {
+                      borderLeft: '3px solid transparent',
+                      color: 'var(--hc-text3)',
+                    }}
+                    className="w-full flex items-center gap-3 px-3 h-9 rounded-lg text-xs transition-all text-left"
                   >
-                    <Icon size={16} className="flex-shrink-0" />
+                    <Icon size={14} className="flex-shrink-0" />
                     <span className="truncate">{label}</span>
                   </button>
                 )
@@ -126,23 +119,25 @@ export default function Sidebar({ onClose }: SidebarProps) {
       </nav>
 
       {/* Rodapé */}
-      <div className="px-3 py-4 border-t border-border flex flex-col gap-1">
-        <div className="flex items-center gap-2 px-3 py-2 mb-1">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[11px] text-muted-foreground">Sistema operacional</span>
+      <div className="px-3 py-3 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--hc-border)' }}>
+        <div className="flex items-center gap-2 px-2 py-1.5 mb-0.5">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
+          <span className="text-[10px]" style={{ color: 'var(--hc-text3)' }}>Sistema operacional</span>
         </div>
         <button
           onClick={toggleTheme}
-          className="w-full flex items-center gap-3 px-3 h-9 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="w-full flex items-center gap-2.5 px-2.5 h-8 rounded-lg text-xs transition-colors"
+          style={{ color: 'var(--hc-text3)' }}
         >
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
           <span>{theme === 'dark' ? 'Tema claro' : 'Tema escuro'}</span>
         </button>
         <button
           onClick={sair}
-          className="w-full flex items-center gap-3 px-3 h-9 rounded-lg text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
+          className="w-full flex items-center gap-2.5 px-2.5 h-8 rounded-lg text-xs transition-colors hover:text-red-400"
+          style={{ color: 'var(--hc-text3)' }}
         >
-          <LogOut size={16} />
+          <LogOut size={14} />
           <span>Sair</span>
         </button>
       </div>

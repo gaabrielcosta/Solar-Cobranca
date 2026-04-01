@@ -1,481 +1,485 @@
-import { useEffect, useState } from 'react'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { useState, useRef } from 'react'
 import { Button } from '@/components/ui/button'
-import { Search, Plus, Sun, Zap, Users, Trash2 } from 'lucide-react'
+import { Upload, FileText, CheckCircle, XCircle, Loader, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { apiFetch } from '@/hooks/useApi'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-interface Usina {
-  id: string
-  nome: string
-  potencia_kwp: number
-  distribuidora: string
-  uc_geradora: string
-  cidade: string
-  estado: string
-  tipo: string
-  beneficiarios?: { id: string }[]
+interface ResultadoFatura {
+  arquivo: string
+  sucesso: boolean
+  mensagem: string
+  cliente?: string
+  uc?: string
+  valor_final?: number
+  competencia?: string
 }
 
-export default function Usinas() {
-  const [usinas,          setUsinas]          = useState<Usina[]>([])
-  const [busca,           setBusca]           = useState('')
-  const [loading,         setLoading]         = useState(true)
-  const [subTab,          setSubTab]          = useState<'usinas' | 'geracao'>('usinas')
-  const [geracoes,        setGeracoes]        = useState<any[]>([])
-  const [loadingGeracoes, setLoadingGeracoes] = useState(false)
-  const [usinaFiltroGer,  setUsinaFiltroGer]  = useState('all')
-  const [removendoBenef,  setRemovendoBenef]  = useState<string | null>(null)
+interface PreviewDemonstrativo {
+  usina_id: string
+  usina_nome: string
+  dados_extraidos: {
+    uc_geradora: string
+    competencia: string
+    kwh_injetado: number
+    saldo_anterior: number
+    saldo_disponivel: number
+    beneficiarios: { uc: string; percentual: number; kwh_transferido: number }[]
+  }
+}
 
-  const [modalNova,     setModalNova]     = useState(false)
-  const [loadingSalvar, setLoadingSalvar] = useState(false)
-  const [erro,          setErro]          = useState('')
-  const [form, setForm] = useState({
-    nome: '', potencia_kwp: '', distribuidora: '',
-    uc_geradora: '', cidade: '', estado: '', tipo: 'propria'
+type Aba = 'cliente' | 'usina'
+
+export default function UploadFaturas() {
+  const [aba, setAba] = useState<Aba>('cliente')
+  const [subAba, setSubAba] = useState<'pdf' | 'manual'>('pdf')
+
+  const [arquivos, setArquivos] = useState<File[]>([])
+  const [resultados, setResultados] = useState<ResultadoFatura[]>([])
+  const [processando, setProcessando] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const [formManual, setFormManual] = useState({
+    uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '',
+    kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: ''
   })
+  const [loadingManual, setLoadingManual] = useState(false)
+  const [resultadoManual, setResultadoManual] = useState<{ sucesso: boolean; mensagem: string } | null>(null)
+  const [erroManual, setErroManual] = useState('')
 
-  const [modalBenef,    setModalBenef]    = useState(false)
-  const [usinaSelecionada, setUsinaSelecionada] = useState<Usina | null>(null)
-  const [beneficiarios, setBeneficiarios] = useState<any[]>([])
-  const [loadingBenef,  setLoadingBenef]  = useState(false)
+  const [dragOverUsina, setDragOverUsina] = useState(false)
+  const [loadingUsina, setLoadingUsina] = useState(false)
+  const [preview, setPreview] = useState<PreviewDemonstrativo | null>(null)
+  const [resultadoUsina, setResultadoUsina] = useState<{ sucesso: boolean; mensagem: string } | null>(null)
+  const inputUsinaRef = useRef<HTMLInputElement>(null)
+  const [erroUsina, setErroUsina] = useState('')
 
-  const [modalAddBenef,  setModalAddBenef]  = useState(false)
-  const [clientes,       setClientes]       = useState<{ id: string; nome: string }[]>([])
-  const [loadingAddBenef,setLoadingAddBenef]= useState(false)
-  const [erroAddBenef,   setErroAddBenef]   = useState('')
-  const [formBenef, setFormBenef] = useState({
-    cliente_id: '', uc_beneficiaria: '', desconto_percentual: '0', dia_vencimento: '10',
-  })
-
-  async function carregarTodasGeracoes() {
-    setLoadingGeracoes(true)
-    const r = await apiFetch<{ data: any[] }>('/api/geracoes')
-    setGeracoes(r.data || [])
-    setLoadingGeracoes(false)
+  function selecionarArquivos(files: FileList | null) {
+    if (!files) return
+    const pdfs = Array.from(files).filter(f => f.type === 'application/pdf')
+    setArquivos(prev => {
+      const nomes = new Set(prev.map(f => f.name))
+      return [...prev, ...pdfs.filter(f => !nomes.has(f.name))]
+    })
   }
 
-  async function carregar() {
-    const r = await apiFetch<{ data: Usina[] }>('/api/usinas')
-    setUsinas(r.data || [])
+  function removerArquivo(nome: string) {
+    setArquivos(prev => prev.filter(f => f.name !== nome))
   }
 
-  async function carregarGeracoes(usinaId: string) {
-    if (!usinaId) return
-    setLoadingGeracoes(true)
-    const r = await apiFetch<{ data: any[] }>(`/api/geracoes/usina/${usinaId}`)
-    setGeracoes(r.data || [])
-    setLoadingGeracoes(false)
+  async function processarPDFs() {
+    if (arquivos.length === 0) return
+    setProcessando(true)
+    setResultados([])
+    const token = localStorage.getItem('token')
+    const novosResultados: ResultadoFatura[] = []
+    for (const arquivo of arquivos) {
+      const formData = new FormData()
+      formData.append('pdf', arquivo)
+      try {
+        const res = await fetch('/api/faturas/processar-pdf', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        })
+        const data = await res.json()
+        novosResultados.push({
+          arquivo: arquivo.name,
+          sucesso: res.ok && data.sucesso,
+          mensagem: data.erro || data.mensagem || (res.ok ? 'Processado com sucesso' : 'Erro desconhecido'),
+          cliente: data.cliente,
+          uc: data.uc,
+          valor_final: data.valor_final,
+          competencia: data.competencia,
+        })
+      } catch {
+        novosResultados.push({ arquivo: arquivo.name, sucesso: false, mensagem: 'Erro ao enviar arquivo' })
+      }
+      setResultados([...novosResultados])
+    }
+    setProcessando(false)
   }
 
-  async function salvarUsina() {
-    if (!form.nome || !form.potencia_kwp || !form.distribuidora || !form.uc_geradora) {
-      setErro('Nome, potência, distribuidora e UC geradora são obrigatórios')
+  async function enviarManual() {
+    if (!formManual.uc || !formManual.competencia || !formManual.kwh_compensado || !formManual.tarifa_kwh) {
+      setErroManual('UC, competência, kWh e tarifa são obrigatórios')
       return
     }
-    setErro('')
-    setLoadingSalvar(true)
+    setErroManual('')
+    setLoadingManual(true)
+    const token = localStorage.getItem('token')
     try {
-      await apiFetch('/api/usinas', {
+      const res = await fetch('/api/faturas/manual', {
         method: 'POST',
-        body: JSON.stringify({ ...form, potencia_kwp: Number(form.potencia_kwp) }),
-      })
-      setModalNova(false)
-      setForm({ nome: '', potencia_kwp: '', distribuidora: '', uc_geradora: '', cidade: '', estado: '', tipo: 'propria' })
-      await carregar()
-    } catch {
-      setErro('Erro ao salvar usina')
-    } finally {
-      setLoadingSalvar(false)
-    }
-  }
-
-  async function abrirBeneficiarios(u: Usina) {
-    setUsinaSelecionada(u)
-    setModalBenef(true)
-    setLoadingBenef(true)
-    try {
-      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${u.id}/beneficiarios`)
-      setBeneficiarios((r as any).data?.beneficiarios || [])
-    } finally {
-      setLoadingBenef(false)
-    }
-  }
-
-  async function salvarBeneficiario() {
-    if (!formBenef.cliente_id || !formBenef.uc_beneficiaria) {
-      setErroAddBenef('Cliente e UC beneficiária são obrigatórios')
-      return
-    }
-    setErroAddBenef('')
-    setLoadingAddBenef(true)
-    try {
-      await apiFetch(`/api/usinas/${usinaSelecionada?.id}/beneficiarios`, {
-        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          cliente_id: formBenef.cliente_id,
-          uc_beneficiaria: formBenef.uc_beneficiaria,
-          desconto_percentual: Number(formBenef.desconto_percentual),
-          dia_vencimento: Number(formBenef.dia_vencimento),
+          uc: formManual.uc,
+          competencia: formManual.competencia,
+          kwh_compensado: Number(formManual.kwh_compensado),
+          tarifa_kwh: Number(formManual.tarifa_kwh),
+          kwh_consumo_energisa: Number(formManual.kwh_consumo_energisa) || 0,
+          cip: Number(formManual.cip) || 0,
+          outros: Number(formManual.outros) || 0,
+          total_fatura_energisa: Number(formManual.total_fatura_energisa) || 0,
+          saldo_credito: Number(formManual.saldo_credito) || 0,
         }),
       })
-      setModalAddBenef(false)
-      setFormBenef({ cliente_id: '', uc_beneficiaria: '', desconto_percentual: '0', dia_vencimento: '10' })
-      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${usinaSelecionada?.id}/beneficiarios`)
-      setBeneficiarios((r as any).data?.beneficiarios || [])
-      setModalBenef(true)
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroManual(data.erro || 'Erro ao salvar fatura')
+        return
+      }
+      setResultadoManual({ sucesso: true, mensagem: data.mensagem || 'Fatura gerada com sucesso' })
+      setFormManual({ uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '', kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: '' })
+    } catch {
+      setErroManual('Erro ao conectar com o servidor')
     } finally {
-      setLoadingAddBenef(false)
+      setLoadingManual(false)
     }
   }
 
-  async function removerBeneficiario(benefId: string) {
-    if (!usinaSelecionada) return
-    setRemovendoBenef(benefId)
+  async function enviarDemonstrativo(file: File) {
+    setLoadingUsina(true)
+    setErroUsina('')
+    setPreview(null)
+    setResultadoUsina(null)
+    const token = localStorage.getItem('token')
+    const formData = new FormData()
+    formData.append('pdf', file)
     try {
-      await apiFetch(`/api/usinas/${usinaSelecionada.id}/beneficiarios/${benefId}`, { method: 'DELETE' })
-      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${usinaSelecionada.id}/beneficiarios`)
-      setBeneficiarios((r as any).data?.beneficiarios || [])
+      const res = await fetch('/api/upload/demonstrativo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroUsina(data.erro || 'Erro ao ler PDF')
+        return
+      }
+      setPreview(data)
+    } catch {
+      setErroUsina('Erro ao enviar arquivo')
     } finally {
-      setRemovendoBenef(null)
+      setLoadingUsina(false)
     }
   }
 
-  useEffect(() => {
-    carregar().finally(() => setLoading(false))
-    apiFetch<{ data: { id: string; nome: string }[] }>('/api/clientes')
-      .then(r => setClientes(r.data || []))
-    carregarTodasGeracoes()
-  }, [])
+  async function processarDemonstrativo() {
+    if (!preview) return
+    setErroUsina('')
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/upload/processar-demonstrativo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usina_id: preview.usina_id,
+          dados_extraidos: preview.dados_extraidos,
+          tarifa_kwh: 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroUsina(data.erro || 'Erro ao processar demonstrativo')
+        return
+      }
+      setResultadoUsina({ sucesso: true, mensagem: data.mensagem || 'Demonstrativo processado com sucesso' })
+      setPreview(null)
+    } catch {
+      setErroUsina('Erro ao processar demonstrativo')
+    }
+  }
 
-  const filtradas = usinas.filter(u =>
-    u.nome.toLowerCase().includes(busca.toLowerCase()) ||
-    u.cidade?.toLowerCase().includes(busca.toLowerCase()) ||
-    u.uc_geradora?.includes(busca)
-  )
-
-  const potenciaTotal = usinas.reduce((acc, u) => acc + Number(u.potencia_kwp), 0)
+  const sucessos = resultados.filter(r => r.sucesso).length
+  const erros    = resultados.filter(r => !r.sucesso).length
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Usinas</h1>
-          <p className="text-muted-foreground text-sm mt-1">{usinas.length} usinas cadastradas</p>
-        </div>
-        <Button onClick={() => setModalNova(true)}>
-          <Plus size={16} />
-          Nova usina
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold">Upload de PDFs</h1>
+        <p className="text-muted-foreground text-sm mt-1">Processa PDFs da Energisa MS automaticamente</p>
       </div>
 
-      <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
-        {[
-          { label: 'Usinas', value: 'usinas' },
-          { label: 'Histórico Geração', value: 'geracao' },
-        ].map((t, i) => (
-          <button
-            key={t.value}
-            onClick={() => setSubTab(t.value as any)}
-            className={cn(
-              'px-4 py-2 text-sm font-medium transition-colors',
-              i > 0 && 'border-l border-border',
-              subTab === t.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setAba('cliente')}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'cliente' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+        >
+          Fatura do cliente
+        </button>
+        <button
+          onClick={() => setAba('usina')}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'usina' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+        >
+          Demonstrativo da usina
+        </button>
       </div>
 
-      {subTab === 'usinas' && (
+      {aba === 'cliente' && (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {[
-              { label: 'Total de usinas', valor: usinas.length, sub: 'plantas cadastradas', icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-              { label: 'Potência total', valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap, cor: 'text-blue-500', bg: 'bg-blue-500/10' },
-              { label: 'Distribuidoras', valor: new Set(usinas.map(u => u.distribuidora)).size, sub: 'concessionárias', icon: Users, cor: 'text-green-500', bg: 'bg-green-500/10' },
-            ].map(k => {
-              const Icon = k.icon
-              return (
-                <div key={k.label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${k.bg}`}>
-                    <Icon size={18} className={k.cor} />
+          <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+            <button
+              onClick={() => setSubAba('pdf')}
+              className={cn('px-4 py-2 text-sm font-medium transition-colors',
+                subAba === 'pdf' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              PDF automático
+            </button>
+            <button
+              onClick={() => setSubAba('manual')}
+              className={cn('px-4 py-2 text-sm font-medium border-l border-border transition-colors',
+                subAba === 'manual' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              Entrada manual
+            </button>
+          </div>
+
+          {subAba === 'pdf' && (
+            <>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); selecionarArquivos(e.dataTransfer.files) }}
+                onClick={() => inputRef.current?.click()}
+                className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                  dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
+              >
+                <Upload size={32} className="text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Arraste os PDFs aqui</p>
+                  <p className="text-sm text-muted-foreground mt-1">Faturas Energisa dos clientes — múltiplos arquivos</p>
+                </div>
+                <input ref={inputRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => selecionarArquivos(e.target.files)} />
+              </div>
+
+              {arquivos.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{arquivos.length} arquivo{arquivos.length !== 1 ? 's' : ''} selecionado{arquivos.length !== 1 ? 's' : ''}</p>
+                    <Button onClick={processarPDFs} disabled={processando}>
+                      {processando ? <><Loader size={16} className="animate-spin" />Processando...</> : <><FileText size={16} />Processar {arquivos.length} PDF{arquivos.length !== 1 ? 's' : ''}</>}
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">{k.label}</p>
-                    <p className={`text-lg sm:text-2xl font-bold leading-tight ${k.cor}`}>{k.valor}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
+                  <div className="flex flex-col gap-2">
+                    {arquivos.map(f => {
+                      const resultado = resultados.find(r => r.arquivo === f.name)
+                      return (
+                        <div key={f.name} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
+                          {resultado ? (
+                            resultado.sucesso ? <CheckCircle size={18} className="text-green-500 flex-shrink-0" /> : <XCircle size={18} className="text-destructive flex-shrink-0" />
+                          ) : processando ? (
+                            <Loader size={18} className="animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <FileText size={18} className="text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{f.name}</p>
+                            {resultado && (
+                              <p className={cn('text-xs mt-0.5', resultado.sucesso ? 'text-green-500' : 'text-destructive')}>
+                                {resultado.sucesso
+                                  ? `${resultado.cliente} — UC ${resultado.uc} — R$ ${Number(resultado.valor_final).toFixed(2).replace('.', ',')} — ${resultado.competencia}`
+                                  : resultado.mensagem}
+                              </p>
+                            )}
+                          </div>
+                          {!processando && !resultado && (
+                            <button onClick={e => { e.stopPropagation(); removerArquivo(f.name) }} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <XCircle size={16} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              )
-            })}
-          </div>
+              )}
 
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome, cidade ou UC geradora..."
-              className="pl-9"
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-            />
-          </div>
-
-          {loading ? (
-            <div className="text-muted-foreground text-sm">Carregando...</div>
-          ) : (
-            <div className="rounded-lg border border-border overflow-x-auto">
-              <table className="w-full text-sm min-w-[500px]">
-                <thead>
-                  <tr className="bg-muted text-muted-foreground">
-                    <th className="text-left px-4 py-3 font-medium">Nome</th>
-                    <th className="text-left px-4 py-3 font-medium">UC Geradora</th>
-                    <th className="text-left px-4 py-3 font-medium">Potência</th>
-                    <th className="text-left px-4 py-3 font-medium">Cidade</th>
-                    <th className="text-left px-4 py-3 font-medium">Distribuidora</th>
-                    <th className="text-left px-4 py-3 font-medium">Tipo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtradas.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-12 text-muted-foreground">Nenhuma usina encontrada</td>
-                    </tr>
-                  ) : (
-                    filtradas.map((u, i) => (
-                      <tr
-                        key={u.id}
-                        onClick={() => abrirBeneficiarios(u)}
-                        className={cn('border-t border-border transition-colors hover:bg-muted/50 cursor-pointer', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}
-                      >
-                        <td className="px-4 py-3 font-medium">{u.nome}</td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.uc_geradora}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{Number(u.potencia_kwp).toFixed(1)} kWp</td>
-                        <td className="px-4 py-3 text-muted-foreground">{u.cidade || '—'}{u.estado ? ` / ${u.estado}` : ''}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{u.distribuidora}</td>
-                        <td className="px-4 py-3">
-                          <span className={cn(
-                            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
-                            u.tipo === 'propria' ? 'bg-green-500/10 text-green-500' :
-                            u.tipo === 'arrendada' ? 'bg-blue-500/10 text-blue-500' :
-                            'bg-purple-500/10 text-purple-500'
-                          )}>
-                            {u.tipo}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+              {resultados.length > 0 && !processando && (
+                <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-green-500" />
+                    <span className="text-sm"><span className="font-medium">{sucessos}</span> processado{sucessos !== 1 ? 's' : ''}</span>
+                  </div>
+                  {erros > 0 && (
+                    <div className="flex items-center gap-2">
+                      <XCircle size={16} className="text-destructive" />
+                      <span className="text-sm"><span className="font-medium">{erros}</span> erro{erros !== 1 ? 's' : ''}</span>
+                    </div>
                   )}
-                </tbody>
-              </table>
+                  <Button variant="outline" className="ml-auto" onClick={() => { setArquivos([]); setResultados([]) }}>Limpar</Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {subAba === 'manual' && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+                Use quando o PDF não for lido corretamente. Os valores devem ser retirados diretamente da fatura impressa da Energisa.
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">UC do cliente *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 3647072" value={formManual.uc} onChange={e => setFormManual(p => ({ ...p, uc: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Competência *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="MM/AAAA" value={formManual.competencia} onChange={e => setFormManual(p => ({ ...p, competencia: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">kWh compensados (GDII) *</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 2520" value={formManual.kwh_compensado} onChange={e => setFormManual(p => ({ ...p, kwh_compensado: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Tarifa kWh (Energisa) *</label>
+                  <input type="number" step="0.000001" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono" placeholder="ex: 1.092920" value={formManual.tarifa_kwh} onChange={e => setFormManual(p => ({ ...p, tarifa_kwh: e.target.value }))} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground border-t border-border pt-4">Informativos (opcional)</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Consumo Energisa (kWh)</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 4349" value={formManual.kwh_consumo_energisa} onChange={e => setFormManual(p => ({ ...p, kwh_consumo_energisa: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">CIP Municipal (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 302.22" value={formManual.cip} onChange={e => setFormManual(p => ({ ...p, cip: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Multa/Juros (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 88.62" value={formManual.outros} onChange={e => setFormManual(p => ({ ...p, outros: e.target.value }))} />
+                </div>
+              </div>
+              {erroManual && <p className="text-sm text-destructive">{erroManual}</p>}
+              {resultadoManual && (
+                <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                  <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
+                  <p className="text-sm text-green-500">{resultadoManual.mensagem}</p>
+                  <Button variant="outline" className="ml-auto" onClick={() => setResultadoManual(null)}>Nova entrada</Button>
+                </div>
+              )}
+              <Button onClick={enviarManual} disabled={loadingManual} className="w-fit">
+                {loadingManual ? <><Loader size={16} className="animate-spin" />Salvando...</> : 'Gerar fatura manualmente'}
+              </Button>
             </div>
           )}
         </>
       )}
 
-      {subTab === 'geracao' && (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center gap-3">
-            <Select value={usinaFiltroGer} onValueChange={v => {
-              setUsinaFiltroGer(v)
-              if (v === 'all') carregarTodasGeracoes()
-              else carregarGeracoes(v)
-            }}>
-              <SelectTrigger className="w-52"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas as usinas</SelectItem>
-                {usinas.map(u => (
-                  <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {loadingGeracoes ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
-          ) : geracoes.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-12 text-center">Nenhuma geração registrada</p>
-          ) : (
-            <div className="rounded-lg border border-border overflow-x-auto">
-              <table className="w-full text-sm min-w-[400px]">
-                <thead>
-                  <tr className="bg-muted text-muted-foreground">
-                    <th className="text-left px-4 py-3 font-medium">Competência</th>
-                    <th className="text-left px-4 py-3 font-medium">kWh gerado</th>
-                    <th className="text-left px-4 py-3 font-medium">Saldo anterior</th>
-                    <th className="text-left px-4 py-3 font-medium">Saldo disponível</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {geracoes.map((g: any, i: number) => (
-                    <tr key={g.id || i} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
-                      <td className="px-4 py-3 text-muted-foreground">{g.competencia?.substring(0, 7) || '—'}</td>
-                      <td className="px-4 py-3 font-medium">{Number(g.energia_gerada_kwh || 0).toFixed(0)} kWh</td>
-                      <td className="px-4 py-3 text-muted-foreground">{Number(g.saldo_anterior || 0).toFixed(0)} kWh</td>
-                      <td className="px-4 py-3 text-muted-foreground">{Number(g.saldo_disponivel || 0).toFixed(0)} kWh</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {aba === 'usina' && (
+        <>
+          {!preview && !resultadoUsina && (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOverUsina(true) }}
+              onDragLeave={() => setDragOverUsina(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOverUsina(false)
+                const file = e.dataTransfer.files[0]
+                if (file?.type === 'application/pdf') { enviarDemonstrativo(file) }
+              }}
+              onClick={() => inputUsinaRef.current?.click()}
+              className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                dragOverUsina ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
+            >
+              <Sun size={32} className="text-muted-foreground" />
+              <div className="text-center">
+                <p className="font-medium">Arraste o PDF do demonstrativo</p>
+                <p className="text-sm text-muted-foreground mt-1">Demonstrativo de compensação da usina — 1 arquivo</p>
+              </div>
+              <input ref={inputUsinaRef} type="file" accept=".pdf" className="hidden" onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) { enviarDemonstrativo(file) }
+              }} />
             </div>
           )}
-        </div>
-      )}
 
-      {/* Modal nova usina */}
-      <Dialog open={modalNova} onOpenChange={setModalNova}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Nova usina</DialogTitle></DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-1.5">
-              <Label>Nome *</Label>
-              <Input placeholder="Nome da usina" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
+          {loadingUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-card">
+              <Loader size={18} className="animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Lendo PDF do demonstrativo...</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Potência (kWp) *</Label>
-                <Input type="number" placeholder="50.0" value={form.potencia_kwp} onChange={e => setForm(p => ({ ...p, potencia_kwp: e.target.value }))} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>UC Geradora *</Label>
-                <Input placeholder="3652109" value={form.uc_geradora} onChange={e => setForm(p => ({ ...p, uc_geradora: e.target.value }))} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Distribuidora *</Label>
-              <Input placeholder="Energisa MS" value={form.distribuidora} onChange={e => setForm(p => ({ ...p, distribuidora: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex flex-col gap-1.5 col-span-2">
-                <Label>Cidade</Label>
-                <Input placeholder="Bataguassu" value={form.cidade} onChange={e => setForm(p => ({ ...p, cidade: e.target.value }))} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>UF</Label>
-                <Input placeholder="MS" maxLength={2} value={form.estado} onChange={e => setForm(p => ({ ...p, estado: e.target.value.toUpperCase() }))} />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>Tipo</Label>
-              <Select value={form.tipo} onValueChange={v => setForm(p => ({ ...p, tipo: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="propria">Própria</SelectItem>
-                  <SelectItem value="arrendada">Arrendada</SelectItem>
-                  <SelectItem value="parceria">Parceria</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {erro && <p className="text-sm text-destructive">{erro}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalNova(false)}>Cancelar</Button>
-            <Button onClick={salvarUsina} disabled={loadingSalvar}>{loadingSalvar ? 'Salvando...' : 'Salvar usina'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          )}
 
-      {/* Modal beneficiários */}
-      <Dialog open={modalBenef} onOpenChange={setModalBenef}>
-        <DialogContent className="!max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Beneficiários — {usinaSelecionada?.nome}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-2">
-            {loadingBenef ? (
-              <p className="text-sm text-muted-foreground">Carregando...</p>
-            ) : beneficiarios.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">Nenhum beneficiário cadastrado</p>
-            ) : (
-              <div className="rounded-lg border border-border overflow-x-auto max-h-[60vh]">
-                <table className="w-full text-sm min-w-[500px]">
-                  <thead>
-                    <tr className="bg-muted text-muted-foreground whitespace-nowrap">
-                      <th className="text-left px-4 py-3 font-medium">Cliente</th>
-                      <th className="text-left px-4 py-3 font-medium">UC</th>
-                      <th className="text-left px-4 py-3 font-medium">Rateio</th>
-                      <th className="text-left px-4 py-3 font-medium">Desconto</th>
-                      <th className="text-left px-4 py-3 font-medium">Status</th>
-                      <th className="text-left px-4 py-3 font-medium">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {beneficiarios.map((b: any, i: number) => (
-                      <tr key={b.id} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
-                        <td className="px-4 py-3 font-medium whitespace-nowrap">{b.cliente?.nome || '—'}</td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs whitespace-nowrap">{b.uc_beneficiaria}</td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.percentual_rateio).toFixed(1)}%</td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.desconto_percentual).toFixed(1)}%</td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <Badge variant={b.ativo ? 'default' : 'secondary'}>{b.ativo ? 'Ativo' : 'Inativo'}</Badge>
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            onClick={() => removerBeneficiario(b.id)}
-                            disabled={removendoBenef === b.id}
-                            className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive disabled:opacity-50"
-                            title="Remover beneficiário"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </td>
+          {erroUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+              <XCircle size={18} className="text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive">{erroUsina}</p>
+              <Button variant="outline" className="ml-auto" onClick={() => setErroUsina('')}>Tentar novamente</Button>
+            </div>
+          )}
+
+          {preview && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={18} className="text-green-500" />
+                  <p className="font-medium text-sm">PDF lido com sucesso — confirme os dados</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground text-xs">Usina</p>
+                    <p className="font-medium">{preview.usina_nome}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Competência</p>
+                    <p className="font-medium">{preview.dados_extraidos.competencia}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">kWh injetado</p>
+                    <p className="font-medium">{preview.dados_extraidos.kwh_injetado} kWh</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Saldo disponível</p>
+                    <p className="font-medium">{preview.dados_extraidos.saldo_disponivel} kWh</p>
+                  </div>
+                </div>
+              </div>
+
+              {preview.dados_extraidos.beneficiarios?.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted text-muted-foreground">
+                        <th className="text-left px-4 py-3 font-medium">UC</th>
+                        <th className="text-left px-4 py-3 font-medium">kWh transferido</th>
+                        <th className="text-left px-4 py-3 font-medium">Percentual</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setModalBenef(false)}>Fechar</Button>
-            <Button onClick={() => { setModalBenef(false); setModalAddBenef(true) }}>Adicionar beneficiário</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                    </thead>
+                    <tbody>
+                      {preview.dados_extraidos.beneficiarios.map((b, i) => (
+                        <tr key={b.uc} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
+                          <td className="px-4 py-2 font-mono text-xs">{b.uc}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{b.kwh_transferido} kWh</td>
+                          <td className="px-4 py-2 text-muted-foreground">{b.percentual}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
-      {/* Modal adicionar beneficiário */}
-      <Dialog open={modalAddBenef} onOpenChange={setModalAddBenef}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Adicionar beneficiário — {usinaSelecionada?.nome}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4 py-2">
-            <div className="flex flex-col gap-1.5">
-              <Label>Cliente *</Label>
-              <Select value={formBenef.cliente_id} onValueChange={v => setFormBenef(p => ({ ...p, cliente_id: v }))}>
-                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
-                <SelectContent>
-                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label>UC Beneficiária *</Label>
-              <Input placeholder="3647072" value={formBenef.uc_beneficiaria} onChange={e => setFormBenef(p => ({ ...p, uc_beneficiaria: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Desconto (%)</Label>
-                <Input type="number" min={0} max={100} value={formBenef.desconto_percentual} onChange={e => setFormBenef(p => ({ ...p, desconto_percentual: e.target.value }))} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Dia vencimento</Label>
-                <Input type="number" min={1} max={28} value={formBenef.dia_vencimento} onChange={e => setFormBenef(p => ({ ...p, dia_vencimento: e.target.value }))} />
+              {erroUsina && <p className="text-sm text-destructive">{erroUsina}</p>}
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => { setPreview(null); setErroUsina('') }}>Cancelar</Button>
+                <Button onClick={processarDemonstrativo}>Confirmar e salvar</Button>
               </div>
             </div>
-            {erroAddBenef && <p className="text-sm text-destructive">{erroAddBenef}</p>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setModalAddBenef(false); setModalBenef(true) }}>Cancelar</Button>
-            <Button onClick={salvarBeneficiario} disabled={loadingAddBenef}>{loadingAddBenef ? 'Salvando...' : 'Adicionar'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          )}
+
+          {resultadoUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+              <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
+              <p className="text-sm text-green-500">{resultadoUsina.mensagem}</p>
+              <Button variant="outline" className="ml-auto" onClick={() => setResultadoUsina(null)}>Processar outro</Button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

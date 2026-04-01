@@ -332,11 +332,11 @@ export default function Clientes() {
   )
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
-          <p className="text-muted-foreground text-sm mt-1">{totalClientes} clientes cadastrados</p>
+          <h1 className="text-xl font-bold" style={{color:"var(--hc-text1)"}}>Clientes</h1>
+          <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>{totalClientes} clientes cadastrados</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <input
@@ -357,7 +357,7 @@ export default function Clientes() {
       </div>
 
       <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:"var(--hc-text3)"}} />
         <Input
           placeholder="Buscar por nome, UC, CPF ou telefone..."
           className="pl-9"
@@ -367,7 +367,7 @@ export default function Clientes() {
       </div>
 
       {loading ? (
-        <div className="text-muted-foreground text-sm">Carregando...</div>
+        <div className="text-xs" style={{color:"var(--hc-text3)"}}>Carregando...</div>
       ) : (
         <div className="flex flex-col gap-3">
           {gruposFiltrados.map(g => {
@@ -378,10 +378,10 @@ export default function Clientes() {
               : 0
 
             return (
-              <div key={gId} className="rounded-xl border border-border bg-card overflow-hidden">
+              <div key={gId} className="rounded-xl overflow-hidden" style={{background:"var(--hc-surface)",border:"1px solid var(--hc-border)"}}>
                 {/* Header do grupo */}
                 <div
-                  className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                  className="flex items-center justify-between px-5 py-4 cursor-pointer transition-colors" onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'}
                   onClick={() => toggleGrupo(gId)}
                 >
                   <div className="flex items-center gap-3">
@@ -389,44 +389,44 @@ export default function Clientes() {
                       <Sun size={16} className={g.usina ? 'text-yellow-500' : 'text-muted-foreground'} />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold">{g.usina?.nome || 'Sem Usina Atribuída'}</p>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{g.usina?.nome || 'Sem Usina Atribuída'}</p>
                       {g.usina && (
-                        <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
+                        <p className="text-xs mt-0.5 hidden sm:block" style={{color:"var(--hc-text3)"}}>
                           {g.usina.distribuidora} · UC {g.usina.uc_geradora} · {Number(g.usina.potencia_kwp).toFixed(1)} kWp · {g.usina.cidade}/{g.usina.estado}
                         </p>
                       )}
                       {!g.usina && (
-                        <p className="text-xs text-muted-foreground mt-0.5">Clientes não vinculados a nenhuma usina</p>
+                        <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>Clientes não vinculados a nenhuma usina</p>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <p className="text-xs text-muted-foreground">{g.beneficiarios.length} cliente{g.beneficiarios.length !== 1 ? 's' : ''}</p>
-                      {g.usina && <p className="text-xs text-muted-foreground">{descontoMedio.toFixed(1)}% desc. médio</p>}
+                      <p className="text-xs" style={{color:"var(--hc-text2)"}}>{g.beneficiarios.length} cliente{g.beneficiarios.length !== 1 ? 's' : ''}</p>
+                      {g.usina && <p className="text-xs" style={{color:"var(--hc-text3)"}}>{descontoMedio.toFixed(1)}% desc. médio</p>}
                     </div>
-                    <div className={cn('hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium', g.usina ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500')}>
-                      <div className={cn('w-1.5 h-1.5 rounded-full', g.usina ? 'bg-green-500' : 'bg-yellow-500')} />
+                    <div className='hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium' style={{background:g.usina?'rgba(80,200,120,0.1)':'rgba(251,191,36,0.1)',color:g.usina?'#50c878':'#fbbf24'}}>
+                      <div className='w-1.5 h-1.5 rounded-full' style={{background:g.usina?'#50c878':'#fbbf24'}} />
                       {g.usina ? 'Ativa' : 'Pendente vínculo'}
                     </div>
-                    {aberto ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+                    {aberto ? <ChevronUp size={16} style={{color:'#5a6a5a'}} /> : <ChevronDown size={16} style={{color:'#5a6a5a'}} />}
                   </div>
                 </div>
 
                 {/* Tabela de clientes */}
                 {aberto && (
-                  <div className="border-t border-border overflow-x-auto">
+                  <div className="overflow-x-auto" style={{borderTop:"1px solid var(--hc-border)"}}>
                     <table className="w-full text-sm min-w-[700px]">
                       <thead>
-                        <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
-                          <th className="text-left px-5 py-2.5 font-medium">Nome</th>
-                          <th className="text-left px-5 py-2.5 font-medium">UC</th>
-                          <th className="text-left px-5 py-2.5 font-medium">CPF/CNPJ</th>
-                          <th className="text-left px-5 py-2.5 font-medium">Desconto</th>
-                          <th className="text-left px-5 py-2.5 font-medium">Telefone</th>
-                          <th className="text-left px-5 py-2.5 font-medium">Email</th>
-                          <th className="text-left px-5 py-2.5 font-medium">Status</th>
-                          <th className="text-left px-5 py-2.5 font-medium">Ações</th>
+                        <tr style={{background:"var(--hc-row-alt)"}}>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Nome</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>UC</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>CPF/CNPJ</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Desconto</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Telefone</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Email</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Status</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -434,30 +434,27 @@ export default function Clientes() {
                           const c = b.cliente
                           if (!c) return null
                           return (
-                            <tr key={b.id} className={cn('border-t border-border/50 hover:bg-muted/20 transition-colors', i % 2 === 0 ? '' : 'bg-muted/10')}>
+                            <tr key={b.id} className='transition-colors' style={{borderTop:'1px solid var(--hc-divider)',background:i%2===0?'transparent':'var(--hc-row-alt)'}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(80,200,120,0.03)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=i%2===0?'transparent':'rgba(255,255,255,0.015)'}>
                               <td className="px-5 py-3">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">
+                                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{background:"rgba(80,200,120,0.12)",color:"#50c878"}}>
                                     {c.nome.substring(0, 2).toUpperCase()}
                                   </div>
-                                  <span className="font-medium">{c.nome}</span>
+                                  <span className="font-medium text-sm" style={{color:"var(--hc-text1)"}}>{c.nome}</span>
                                 </div>
                               </td>
-                              <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{b.uc_beneficiaria || '—'}</td>
-                              <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{c.cpf_cnpj || '—'}</td>
+                              <td className="px-5 py-3 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{b.uc_beneficiaria || '—'}</td>
+                              <td className="px-5 py-3 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{c.cpf_cnpj || '—'}</td>
                               <td className="px-5 py-3">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-500/10 text-green-500">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{background:"rgba(80,200,120,0.1)",color:"#50c878"}}>
                                   ↓ {Number(b.desconto_percentual || 0).toFixed(0)}%
                                 </span>
                               </td>
-                              <td className="px-5 py-3 text-muted-foreground text-xs">{c.telefone || '—'}</td>
-                              <td className="px-5 py-3 text-muted-foreground text-xs">{c.email || '—'}</td>
+                              <td className="px-5 py-3 text-xs" style={{color:"var(--hc-text2)"}}>{c.telefone || '—'}</td>
+                              <td className="px-5 py-3 text-xs" style={{color:"var(--hc-text2)"}}>{c.email || '—'}</td>
                               <td className="px-5 py-3">
-                                <div className={cn(
-                                  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium',
-                                  b.ativo ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'
-                                )}>
-                                  <div className={cn('w-1.5 h-1.5 rounded-full', b.ativo ? 'bg-green-500' : 'bg-muted-foreground')} />
+                                <div className='inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium' style={{background:b.ativo?'rgba(80,200,120,0.1)':'rgba(255,255,255,0.05)',color:b.ativo?'#50c878':'#5a6a5a'}}>
+                                  <div className='w-1.5 h-1.5 rounded-full' style={{background:b.ativo?'#50c878':'#5a6a5a'}} />
                                   {b.ativo ? 'Ativo' : 'Inativo'}
                                 </div>
                               </td>
@@ -491,15 +488,15 @@ export default function Clientes() {
                         })}
                         {/* Rodapé do grupo */}
                         {g.usina && (
-                          <tr className="border-t border-border/50 bg-muted/20">
-                            <td colSpan={3} className="px-5 py-2 text-xs text-muted-foreground">
+                          <tr style={{borderTop:"1px solid rgba(255,255,255,0.04)",background:"var(--hc-row-alt)"}}>
+                            <td colSpan={3} className="px-5 py-2 text-xs" style={{color:"var(--hc-text3)"}}>
                               Total desta usina
                             </td>
                             <td className="px-5 py-2">
-                              <span className="text-xs font-medium text-green-500">{g.beneficiarios.length} clientes</span>
+                              <span className="text-xs font-medium" style={{color:"var(--hc-accent)"}}>{g.beneficiarios.length} clientes</span>
                             </td>
                             <td className="px-5 py-2">
-                              <span className="text-xs text-muted-foreground">{descontoMedio.toFixed(1)}% desc. médio</span>
+                              <span className="text-xs" style={{color:"var(--hc-text3)"}}>{descontoMedio.toFixed(1)}% desc. médio</span>
                             </td>
                             <td colSpan={3} />
                           </tr>

@@ -1,0 +1,3679 @@
+import { useEffect, useState } from 'react'
+import { FileText, Users, Sun, Zap, TrendingUp, CheckCircle, AlertCircle, Activity } from 'lucide-react'
+import { apiFetch } from '@/hooks/useApi'
+import { useNavigate } from 'react-router-dom'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend
+} from 'recharts'
+
+interface Fatura {
+  id: string
+  valor: number
+  status: string
+  competencia: string
+  data_vencimento: string
+  kwh_alocado: number
+  beneficiario?: {
+    uc_beneficiaria: string
+    cliente?: { nome: string }
+    usina?: { nome: string }
+  }
+}
+
+interface Usina {
+  id: string
+  nome: string
+  potencia_kwp: number
+  distribuidora: string
+}
+
+interface Geracao {
+  id: string
+  energia_gerada_kwh: number
+  saldo_disponivel: number
+  saldo_anterior: number
+  competencia: string
+  tarifa_kwh: number
+  usina?: { nome: string }
+}
+
+const statusConfig: Record<string, { label: string; cor: string; dot: string }> = {
+  pendente: { label: 'Pendente', cor: 'text-yellow-500', dot: 'bg-yellow-500' },
+  paga:     { label: 'Paga',     cor: 'text-green-500',  dot: 'bg-green-500' },
+  atrasada: { label: 'Atrasada', cor: 'text-red-500',    dot: 'bg-red-500' },
+  enviada:  { label: 'Enviada',  cor: 'text-blue-500',   dot: 'bg-blue-500' },
+}
+
+function fmtMoeda(v: number) {
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function fmtData(d: string) {
+  if (!d) return '—'
+  return d.substring(0, 10).split('-').reverse().join('/')
+}
+
+function fmtComp(d: string) {
+  if (!d) return '—'
+  const dt = new Date(d + 'T12:00:00')
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`
+}
+
+const CustomTooltipArea = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-lg">
+      <p className="font-medium mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.name} style={{ color: p.color }}>{p.name}: {Number(p.value).toLocaleString('pt-BR')} {p.name === 'Receita' ? 'R$' : 'kWh'}</p>
+      ))}
+    </div>
+  )
+}
+
+const CustomTooltipLine = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-card border border-border rounded-lg p-3 text-xs shadow-lg">
+      <p className="font-medium mb-2">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.name} style={{ color: p.color }}>{p.name}: {fmtMoeda(Number(p.value))}</p>
+      ))}
+    </div>
+  )
+}
+
+export default function Dashboard() {
+  const navigate = useNavigate()
+
+  const [faturas,     setFaturas]     = useState<Fatura[]>([])
+  const [usinas,      setUsinas]      = useState<Usina[]>([])
+  const [geracoes,    setGeracoes]    = useState<Geracao[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [filtroUsina, setFiltroUsina] = useState('all')
+  const [filtroMes,   setFiltroMes]   = useState('all')
+  const [filtroAno,   setFiltroAno]   = useState(String(new Date().getFullYear()))
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch<{ data: Fatura[] }>('/api/faturas'),
+      apiFetch<{ data: Usina[] }>('/api/usinas'),
+      apiFetch<{ data: Geracao[] }>('/api/geracoes'),
+    ]).then(([f, u, g]) => {
+      setFaturas(f.data || [])
+      setUsinas(u.data || [])
+      setGeracoes(g.data || [])
+    }).finally(() => setLoading(false))
+  }, [])
+
+  const fs = faturas.filter(f => {
+    const comp       = f.competencia ? f.competencia.substring(0, 7) : ''
+    const matchUsina = filtroUsina === 'all' || f.beneficiario?.usina?.nome === filtroUsina
+    const matchMes   = filtroMes === 'all' || comp.substring(5, 7) === filtroMes
+    const matchAno   = filtroAno === 'all' || comp.substring(0, 4) === filtroAno
+    return matchUsina && matchMes && matchAno
+  })
+
+  const gs = geracoes.filter(g =>
+  filtroUsina === 'all' || g.usina?.nome === filtroUsina
+)
+
+  const pendentes = fs.filter(f => f.status === 'pendente')
+  const pagas     = fs.filter(f => f.status === 'paga')
+  const atrasadas = fs.filter(f => f.status === 'atrasada')
+
+  const valorPendente = [...pendentes, ...atrasadas].reduce((a, f) => a + Number(f.valor), 0)
+  const kwh_total   = gs.reduce((a, g) => a + Number(g.energia_gerada_kwh || 0), 0)
+  const saldo_total = gs.reduce((a, g) => a + Number(g.saldo_disponivel || 0), 0)
+  const kwh_faturado  = fs.reduce((a, f) => a + Number(f.kwh_alocado || 0), 0)
+  const clientesFiltrados = new Set(fs.map(f => f.beneficiario?.cliente?.nome).filter(Boolean)).size
+
+  const ultimasFaturas = [...fs]
+    .sort((a, b) => new Date(b.competencia).getTime() - new Date(a.competencia).getTime())
+    .slice(0, 6)
+
+  // Dados para gráfico de produção mensal
+  const geracaoPorComp: Record<string, { comp: string; geracao: number; compensacao: number }> = {}
+  gs.forEach(g => {
+    const comp = fmtComp(g.competencia)
+    if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
+    geracaoPorComp[comp].geracao += Number(g.energia_gerada_kwh || 0)
+  })
+  fs.forEach(f => {
+    const comp = fmtComp(f.competencia)
+    if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
+    geracaoPorComp[comp].compensacao += Number(f.kwh_alocado || 0)
+  })
+  const dadosProducao = Object.values(geracaoPorComp)
+    .sort((a, b) => a.comp.localeCompare(b.comp))
+    .slice(-8)
+    .map(d => ({ name: d.comp, Geração: Math.round(d.geracao), Compensação: Math.round(d.compensacao) }))
+
+  // Dados para gráfico de receita
+  const receitaPorComp: Record<string, { comp: string; realizado: number; projecao: number }> = {}
+  fs.forEach(f => {
+    const comp = fmtComp(f.competencia)
+    if (!receitaPorComp[comp]) receitaPorComp[comp] = { comp, realizado: 0, projecao: 0 }
+    receitaPorComp[comp].projecao += Number(f.valor || 0)
+    if (f.status === 'paga') receitaPorComp[comp].realizado += Number(f.valor || 0)
+  })
+  const dadosReceita = Object.values(receitaPorComp)
+    .sort((a, b) => a.comp.localeCompare(b.comp))
+    .slice(-8)
+    .map(d => ({ name: d.comp, Realizado: parseFloat(d.realizado.toFixed(2)), Projeção: parseFloat(d.projecao.toFixed(2)) }))
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">Carregando...</div>
+  )
+
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-muted-foreground text-sm mt-1">Visão geral do sistema</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+          <Select value={filtroUsina} onValueChange={setFiltroUsina}>
+            <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as usinas</SelectItem>
+              {usinas.map(u => <SelectItem key={u.id} value={u.nome}>{u.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filtroMes} onValueChange={setFiltroMes}>
+            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os meses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os meses</SelectItem>
+              {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                <SelectItem key={m} value={m}>{['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][i]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filtroAno} onValueChange={setFiltroAno}>
+            <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="2024">2024</SelectItem>
+              <SelectItem value="2025">2025</SelectItem>
+              <SelectItem value="2026">2026</SelectItem>
+            </SelectContent>
+          </Select>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-green-500/30 bg-green-500/5">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-green-500 font-medium">Ao vivo</span>
+          </div>
+        </div>
+      </div>
+
+      {/* KPIs energia */}
+      <div>
+        <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-widest mb-3">INDICADORES DE ENERGIA</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Geração Total',        valor: `${kwh_total.toLocaleString('pt-BR')} kWh`,    sub: 'kWh injetados na rede',     icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  barra: 100 },
+            { label: 'kWh Faturados',        valor: `${kwh_faturado.toLocaleString('pt-BR')} kWh`, sub: 'distribuídos aos clientes', icon: Activity,   cor: 'text-blue-500',   bg: 'bg-blue-500/10',   barra: kwh_total > 0 ? (kwh_faturado / kwh_total) * 100 : 0 },
+            { label: 'Créditos Disponíveis', valor: `${saldo_total.toLocaleString('pt-BR')} kWh`,  sub: 'saldo acumulado',           icon: TrendingUp, cor: 'text-purple-500', bg: 'bg-purple-500/10', barra: kwh_total > 0 ? (saldo_total / kwh_total) * 100 : 0 },
+            { label: 'Usinas Ativas',        valor: `${usinas.length}`,                            sub: `${usinas.reduce((a, u) => a + Number(u.potencia_kwp), 0).toFixed(1)} kWp total`, icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10', barra: 100 },
+          ].map(k => {
+            const Icon = k.icon
+            return (
+              <div key={k.label} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${k.bg}`}>
+                  <Icon size={18} className={k.cor} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                  <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
+                </div>
+                <div className="h-1 bg-muted rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${k.cor.replace('text-', 'bg-')}`} style={{ width: `${Math.min(k.barra, 100)}%` }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* KPIs financeiros */}
+      <div>
+        <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-widest mb-3">INDICADORES FINANCEIROS</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Total a Receber', valor: fmtMoeda(valorPendente), sub: `${pendentes.length} faturas pendentes`, icon: FileText,    cor: 'text-orange-500', bg: 'bg-orange-500/10' },
+            { label: 'Faturas Pagas',   valor: pagas.length,            sub: 'este período',                          icon: CheckCircle, cor: 'text-green-500',  bg: 'bg-green-500/10' },
+            { label: 'Clientes Ativos', valor: clientesFiltrados,                sub: 'beneficiários',                         icon: Users,       cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
+            { label: 'Em Atraso',       valor: atrasadas.length,        sub: 'faturas vencidas',                      icon: AlertCircle, cor: 'text-red-500',    bg: 'bg-red-500/10' },
+          ].map(k => {
+            const Icon = k.icon
+            return (
+              <div key={k.label} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${k.bg}`}>
+                  <Icon size={18} className={k.cor} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                  <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Gráficos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Produção Mensal */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold">Produção Mensal de Energia</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Geração vs. compensação (kWh)</p>
+          </div>
+          {dadosProducao.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">Sem dados de geração</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={dadosProducao} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="colorGeracao" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="colorCompensacao" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--hc-row-alt)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <Tooltip content={<CustomTooltipArea />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Area type="monotone" dataKey="Geração" stroke="#22c55e" fill="url(#colorGeracao)" strokeWidth={2} dot={{ r: 3, fill: '#22c55e' }} />
+                <Area type="monotone" dataKey="Compensação" stroke="#3b82f6" fill="url(#colorCompensacao)" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Projeção de Receita */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold">Projeção de Receita</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Realizado vs. projeção (R$)</p>
+          </div>
+          {dadosReceita.length === 0 ? (
+            <div className="h-48 flex items-center justify-center text-xs text-muted-foreground">Sem dados de receita</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={dadosReceita} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--hc-row-alt)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
+                <Tooltip content={<CustomTooltipLine />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="Realizado" stroke="#22c55e" strokeWidth={2} dot={{ r: 4, fill: '#22c55e' }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="Projeção" stroke="#a855f7" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#a855f7' }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Últimas cobranças + Usinas */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-2 rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h2 className="text-sm font-semibold">Últimas Cobranças</h2>
+            <button onClick={() => navigate('/faturas')} className="text-xs text-primary hover:underline">Ver todas</button>
+          </div>
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border">
+                <th className="text-left px-5 py-3 text-xs font-medium">Beneficiário</th>
+                <th className="text-left px-5 py-3 text-xs font-medium">Valor (R$)</th>
+                <th className="text-left px-5 py-3 text-xs font-medium">Vencimento</th>
+                <th className="text-left px-5 py-3 text-xs font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ultimasFaturas.length === 0 ? (
+                <tr><td colSpan={4} className="text-center py-8 text-muted-foreground text-xs">Nenhuma fatura no período</td></tr>
+              ) : ultimasFaturas.map((f, i) => {
+                const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground', dot: 'bg-muted-foreground' }
+                return (
+                  <tr key={f.id} onClick={() => navigate('/faturas')}
+                    className={cn('border-b border-border/50 hover:bg-muted/30 cursor-pointer transition-colors', i % 2 === 0 ? 'bg-background' : 'bg-muted/10')}
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">
+                          {(f.beneficiario?.cliente?.nome || '?').substring(0, 2).toUpperCase()}
+                        </div>
+                        <span className="font-medium truncate max-w-[80px] sm:max-w-[160px]">{f.beneficiario?.cliente?.nome || '—'}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 font-medium">{fmtMoeda(f.valor)}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{fmtData(f.data_vencimento)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
+                        <span className={cn('text-xs font-medium', st.cor)}>{st.label}</span>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+            <h2 className="text-sm font-semibold">Usinas</h2>
+            <button onClick={() => navigate('/usinas')} className="text-xs text-primary hover:underline">Gerenciar</button>
+          </div>
+          <div className="flex flex-col divide-y divide-border">
+            {usinas.map(u => (
+              <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="w-8 h-8 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                  <Sun size={14} className="text-yellow-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{u.nome}</p>
+                  <p className="text-xs text-muted-foreground">{Number(u.potencia_kwp).toFixed(1)} kWp</p>
+                </div>
+                <Badge variant="outline" className="text-green-500 border-green-500/30 text-[10px]">Ativa</Badge>
+              </div>
+            ))}
+            {usinas.length === 0 && <p className="text-sm text-muted-foreground px-5 py-6 text-center">Nenhuma usina</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}import { useEffect, useState } from 'react'
+import { apiFetch } from '@/hooks/useApi'
+import { TrendingUp, TrendingDown, Users, Percent } from 'lucide-react'
+
+interface Fatura {
+  id: string
+  valor: number
+  valor_desconto: number
+  valor_sem_desconto: number
+  desconto_percentual: number
+  status: string
+  competencia: string
+  kwh_alocado: number
+  beneficiario?: {
+    cliente?: { id: string; nome: string }
+    usina?: { nome: string }
+  }
+}
+
+function fmtMoeda(v: number) {
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function fmtComp(d: string) {
+  if (!d) return '—'
+  const dt = new Date(d + 'T12:00:00')
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`
+}
+
+const COMP_COLORS = [
+  'bg-blue-500', 'bg-purple-500', 'bg-cyan-500',
+  'bg-indigo-500', 'bg-violet-500', 'bg-sky-500',
+]
+
+export default function Analytics() {
+  const [faturas, setFaturas] = useState<Fatura[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    apiFetch<{ data: Fatura[] }>('/api/faturas')
+      .then(r => setFaturas(r.data || []))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-muted-foreground text-sm">Carregando...</div>
+
+  const total     = faturas.length
+  const pagas     = faturas.filter(f => f.status === 'paga')
+  const atrasadas = faturas.filter(f => f.status === 'atrasada')
+
+  const economiaTotal = faturas.reduce((acc, f) => acc + Number(f.valor_desconto || 0), 0)
+  const inadimplencia = total > 0 ? ((atrasadas.length / total) * 100).toFixed(1) : '0.0'
+  const ticketMedio   = pagas.length > 0 ? pagas.reduce((acc, f) => acc + Number(f.valor), 0) / pagas.length : 0
+  const descontoMedio = faturas.length > 0 ? faturas.reduce((acc, f) => acc + Number(f.desconto_percentual || 0), 0) / faturas.length : 0
+
+  const economiaPorCliente: Record<string, { nome: string; economia: number; faturas: number }> = {}
+  faturas.forEach(f => {
+    const id   = f.beneficiario?.cliente?.id || 'sem-cliente'
+    const nome = f.beneficiario?.cliente?.nome || '—'
+    if (!economiaPorCliente[id]) economiaPorCliente[id] = { nome, economia: 0, faturas: 0 }
+    economiaPorCliente[id].economia += Number(f.valor_desconto || 0)
+    economiaPorCliente[id].faturas  += 1
+  })
+  const rankEconomia = Object.values(economiaPorCliente)
+    .sort((a, b) => b.economia - a.economia)
+    .slice(0, 10)
+
+  const porComp: Record<string, { total: number; pagas: number; atrasadas: number; valor: number }> = {}
+  faturas.forEach(f => {
+    const comp = fmtComp(f.competencia)
+    if (!porComp[comp]) porComp[comp] = { total: 0, pagas: 0, atrasadas: 0, valor: 0 }
+    porComp[comp].total++
+    porComp[comp].valor += Number(f.valor)
+    if (f.status === 'paga') porComp[comp].pagas++
+    if (f.status === 'atrasada') porComp[comp].atrasadas++
+  })
+  const comps = Object.entries(porComp)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-6)
+
+  const maxValor = Math.max(...comps.map(([, v]) => v.valor), 1)
+  const maxEco   = rankEconomia[0]?.economia || 1
+
+  const kpis = [
+    { label: 'Economia Gerada',  valor: fmtMoeda(economiaTotal),         sub: 'total de descontos concedidos',          icon: TrendingUp,  cor: 'text-green-500',  bg: 'bg-green-500/10',  border: 'border-green-500/20' },
+    { label: 'Inadimplência',    valor: `${inadimplencia}%`,              sub: `${atrasadas.length} fatura${atrasadas.length !== 1 ? 's' : ''} em atraso`, icon: TrendingDown, cor: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+    { label: 'Ticket Médio',     valor: fmtMoeda(ticketMedio),            sub: 'valor médio das faturas pagas',          icon: Users,       cor: 'text-blue-500',   bg: 'bg-blue-500/10',   border: 'border-blue-500/20' },
+    { label: 'Desconto Médio',   valor: `${descontoMedio.toFixed(1)}%`,   sub: 'média da carteira',                      icon: Percent,     cor: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+  ]
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Analytics</h1>
+        <p className="text-muted-foreground text-sm mt-1">Visão financeira da carteira</p>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {kpis.map(k => {
+          const Icon = k.icon
+          return (
+            <div key={k.label} className={`rounded-xl border ${k.border} bg-card p-5 flex flex-col gap-4`}>
+              <div className="flex items-center justify-between">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${k.bg}`}>
+                  <Icon size={20} className={k.cor} />
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                <p className={`text-lg sm:text-2xl font-bold mt-1 leading-tight ${k.cor}`}>{k.valor}</p>
+                <p className="text-xs text-muted-foreground mt-1">{k.sub}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Gráficos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-5">
+            <h2 className="text-sm font-semibold">Faturamento por Competência</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Valor total faturado por mês</p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {comps.map(([comp, v], idx) => (
+              <div key={comp}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs font-medium">{comp}</span>
+                  <span className="text-xs font-semibold">{fmtMoeda(v.valor)}</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${COMP_COLORS[idx % COMP_COLORS.length]}`}
+                    style={{ width: `${(v.valor / maxValor) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="mb-5">
+            <h2 className="text-sm font-semibold">Status por Competência</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">% de faturas pagas por mês</p>
+          </div>
+          <div className="flex flex-col gap-4">
+            {comps.map(([comp, v]) => {
+              const pct      = v.total > 0 ? (v.pagas / v.total) * 100 : 0
+              const pctAtr   = v.total > 0 ? (v.atrasadas / v.total) * 100 : 0
+              return (
+                <div key={comp}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium">{comp}</span>
+                    <span className="text-xs text-muted-foreground">{v.pagas}/{v.total} pagas</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden flex">
+                    <div className="h-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
+                    <div className="h-full bg-red-500 transition-all" style={{ width: `${pctAtr}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1">
+                    <span className="text-[10px] text-green-500">{pct.toFixed(0)}% pagas</span>
+                    {pctAtr > 0 && <span className="text-[10px] text-red-500">{pctAtr.toFixed(0)}% atrasadas</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Ranking economia */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="mb-5">
+          <h2 className="text-sm font-semibold">Economia por Cliente</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">Total de descontos acumulados por beneficiário</p>
+        </div>
+        <div className="flex flex-col gap-4">
+          {rankEconomia.map((c, i) => (
+            <div key={i}>
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-muted-foreground w-4 flex-shrink-0">{i + 1}</span>
+                  <div className="w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center text-[9px] font-bold text-green-500 flex-shrink-0">
+                    {c.nome.substring(0, 2).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium truncate">{c.nome}</span>
+                </div>
+                <span className="text-sm font-semibold text-green-500 flex-shrink-0 ml-4">{fmtMoeda(c.economia)}</span>
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all"
+                  style={{ width: `${(c.economia / maxEco) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}import { useEffect, useState, useRef } from 'react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Search, Download, Trash2, Edit, QrCode, ChevronDown, ChevronUp, CheckCircle, FileText, Sun, Copy } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { apiFetch } from '@/hooks/useApi'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+interface Fatura {
+  id: string
+  valor: number
+  status: string
+  competencia: string
+  data_vencimento: string
+  data_leitura: string
+  kwh_alocado: number
+  tarifa_kwh: number
+  desconto_percentual: number
+  pix_copia_cola: string
+  beneficiario?: {
+    id: string
+    uc_beneficiaria: string
+    cliente?: { id: string; nome: string }
+    usina?: { id: string; nome: string }
+  }
+}
+
+interface Usina {
+  id: string
+  nome: string
+}
+
+interface GrupoUsina {
+  usina: Usina | null
+  faturas: Fatura[]
+}
+
+const statusConfig: Record<string, { label: string; cor: string; bg: string; dot: string }> = {
+  pendente:  { label: 'Pendente',  cor: 'text-yellow-500', bg: 'bg-yellow-500/10', dot: 'bg-yellow-500' },
+  paga:      { label: 'Pago',      cor: 'text-green-500',  bg: 'bg-green-500/10',  dot: 'bg-green-500' },
+  atrasada:  { label: 'Atrasada',  cor: 'text-red-500',    bg: 'bg-red-500/10',    dot: 'bg-red-500' },
+  enviada:   { label: 'Enviada',   cor: 'text-blue-500',   bg: 'bg-blue-500/10',   dot: 'bg-blue-500' },
+  negociada: { label: 'Negociada', cor: 'text-purple-500', bg: 'bg-purple-500/10', dot: 'bg-purple-500' },
+}
+
+function fmtMoeda(v: number) {
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function fmtData(d: string) {
+  if (!d) return '—'
+  return d.substring(0, 10).split('-').reverse().join('/')
+}
+
+function fmtComp(d: string) {
+  if (!d) return '—'
+  const dt = new Date(d + 'T12:00:00')
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`
+}
+
+export default function Faturas() {
+  const [faturas,    setFaturas]    = useState<Fatura[]>([])
+  const [usinas,     setUsinas]     = useState<Usina[]>([])
+  const [grupos,     setGrupos]     = useState<GrupoUsina[]>([])
+  const [abertos,    setAbertos]    = useState<Set<string>>(new Set())
+  const [busca,      setBusca]      = useState('')
+  const [loading,    setLoading]    = useState(true)
+  const [filtroMes,    setFiltroMes]    = useState('all')
+  const [filtroAno,    setFiltroAno]    = useState('all')
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+
+  const [faturaSelecionada, setFaturaSelecionada] = useState<Fatura | null>(null)
+
+  // Modal pagar
+  const [modalPagar,    setModalPagar]    = useState(false)
+  const [formaPagamento,setFormaPagamento]= useState('pix')
+  const [loadingPagar,  setLoadingPagar]  = useState(false)
+
+  // Modal editar valor
+  const [modalEditar,    setModalEditar]    = useState(false)
+  const [formEditar,     setFormEditar]     = useState({ valor: '', kwh_alocado: '', tarifa_kwh: '', desconto_percentual: '' })
+  const [loadingEditar,  setLoadingEditar]  = useState(false)
+
+  // Modal excluir
+  const [modalExcluir,   setModalExcluir]   = useState(false)
+  const [loadingExcluir, setLoadingExcluir] = useState(false)
+
+  // Modal PIX
+  const [modalPix,  setModalPix]  = useState(false)
+  const [pixCopied, setPixCopied] = useState(false)
+
+  // Modal boleto upload
+  const [modalBoleto,    setModalBoleto]    = useState(false)
+  const [loadingBoleto,  setLoadingBoleto]  = useState(false)
+  const [erroBoleto,     setErroBoleto]     = useState('')
+  const boletoRef = useRef<HTMLInputElement>(null)
+
+  // Modal relatório
+  const [modalRelatorio, setModalRelatorio] = useState(false)
+  const [relMes,   setRelMes]   = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
+  const [relAno,   setRelAno]   = useState(String(new Date().getFullYear()))
+  const [relUsina, setRelUsina] = useState('all')
+  const [loadingRel, setLoadingRel] = useState(false)
+  const [statusRel,  setStatusRel]  = useState('')
+
+  async function carregar() {
+    const [fRes, uRes] = await Promise.all([
+      apiFetch<{ data: Fatura[] }>('/api/faturas'),
+      apiFetch<{ data: Usina[] }>('/api/usinas'),
+    ])
+    const fs = fRes.data || []
+    const us = uRes.data || []
+    setFaturas(fs)
+    setUsinas(us)
+
+    // Agrupa por usina
+    const map: Record<string, GrupoUsina> = {}
+    fs.forEach(f => {
+      const uid  = f.beneficiario?.usina?.id || 'sem-usina'
+      const unome = f.beneficiario?.usina?.nome || 'Sem Usina'
+      if (!map[uid]) map[uid] = { usina: uid === 'sem-usina' ? null : { id: uid, nome: unome }, faturas: [] }
+      map[uid].faturas.push(f)
+    })
+    const gs = Object.values(map)
+    setGrupos(gs)
+    setAbertos(new Set(gs.map(g => g.usina?.id || 'sem-usina')))
+  }
+
+  useEffect(() => {
+    carregar().finally(() => setLoading(false))
+  }, [])
+
+  function toggleGrupo(id: string) {
+    setAbertos(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  async function marcarPaga() {
+    if (!faturaSelecionada) return
+    setLoadingPagar(true)
+    try {
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}/pagar`, {
+        method: 'PUT',
+        body: JSON.stringify({ forma_pagamento: formaPagamento }),
+      })
+      setModalPagar(false)
+      await carregar()
+    } finally {
+      setLoadingPagar(false)
+    }
+  }
+
+  async function salvarEdicao() {
+    if (!faturaSelecionada) return
+    setLoadingEditar(true)
+    try {
+      const kwh      = parseFloat(formEditar.kwh_alocado) || 0
+      const tarifa   = parseFloat(formEditar.tarifa_kwh) || 0
+      const desc     = parseFloat(formEditar.desconto_percentual) || 0
+      const bruto    = kwh * tarifa
+      const calculado = parseFloat((bruto - bruto * desc / 100).toFixed(2))
+      const valorFinal = formEditar.valor ? parseFloat(formEditar.valor) : calculado
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}/valor`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          valor: valorFinal,
+          kwh_alocado: kwh,
+          tarifa_kwh: tarifa,
+          desconto_percentual: desc,
+        }),
+      })
+      setModalEditar(false)
+      await carregar()
+    } finally {
+      setLoadingEditar(false)
+    }
+  }
+
+  async function excluirFatura() {
+    if (!faturaSelecionada) return
+    setLoadingExcluir(true)
+    try {
+      await apiFetch(`/api/faturas/${faturaSelecionada.id}`, { method: 'DELETE' })
+      setModalExcluir(false)
+      await carregar()
+    } finally {
+      setLoadingExcluir(false)
+    }
+  }
+
+  function copiarPix() {
+    if (!faturaSelecionada?.pix_copia_cola) return
+    navigator.clipboard.writeText(faturaSelecionada.pix_copia_cola)
+    setPixCopied(true)
+    setTimeout(() => setPixCopied(false), 2000)
+  }
+
+  async function uploadBoleto(file: File) {
+    if (!faturaSelecionada) return
+    setLoadingBoleto(true)
+    setErroBoleto('')
+    const token = localStorage.getItem('token')
+    const formData = new FormData()
+    formData.append('pdf', file)
+    try {
+      const res = await fetch(`/api/faturas/${faturaSelecionada.id}/boleto-pdf`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroBoleto(data.erro || 'Erro ao processar boleto')
+        return
+      }
+      setModalBoleto(false)
+      await carregar()
+      // Abre modal PIX com o novo código
+      const fAtualizada = faturas.find(f => f.id === faturaSelecionada.id)
+      if (fAtualizada) { setFaturaSelecionada({ ...fAtualizada, pix_copia_cola: data.pix_copia_cola }); setModalPix(true) }
+    } finally {
+      setLoadingBoleto(false)
+      if (boletoRef.current) boletoRef.current.value = ''
+    }
+  }
+
+  async function baixarPDF(f: Fatura, e: React.MouseEvent) {
+    e.stopPropagation()
+    const token = localStorage.getItem('token')
+    const res = await fetch(`/api/faturas/${f.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!res.ok) return
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fatura-${f.beneficiario?.cliente?.nome || f.id}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function gerarRelatorio() {
+    setLoadingRel(true)
+    setStatusRel('')
+    try {
+      const comp = `${relAno}-${relMes}-01`
+      const token = localStorage.getItem('token')
+      const endpoint = relUsina && relUsina !== 'all'
+        ? `/api/faturas/relatorio/${comp}?usina=${relUsina}`
+        : `/api/faturas/relatorio/${comp}`
+      const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } })
+      if (!res.ok) { setStatusRel('Erro ao gerar relatório'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `relatorio-acelivre-${relMes}-${relAno}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      setStatusRel('Relatório gerado com sucesso')
+      setTimeout(() => setModalRelatorio(false), 1500)
+    } finally {
+      setLoadingRel(false)
+    }
+  }
+
+  const q = busca.toLowerCase()
+  const gruposFiltrados = grupos.map(g => ({
+    ...g,
+    faturas: g.faturas.filter(f => {
+      const comp = f.competencia ? f.competencia.substring(0, 7) : ''
+      const nome = f.beneficiario?.cliente?.nome?.toLowerCase() || ''
+      const uc   = f.beneficiario?.uc_beneficiaria?.toLowerCase() || ''
+      return (
+        (!q || nome.includes(q) || uc.includes(q)) &&
+        (filtroStatus === 'todos' || f.status === filtroStatus) &&
+        (filtroMes === 'all' || comp.substring(5, 7) === filtroMes) &&
+        (filtroAno === 'all' || comp.substring(0, 4) === filtroAno)
+      )
+    })
+  })).filter(g => g.faturas.length > 0)
+
+  const total     = faturas.length
+  const pendentes = faturas.filter(f => f.status === 'pendente').length
+  const pagas     = faturas.filter(f => f.status === 'paga').length
+  const atrasadas = faturas.filter(f => f.status === 'atrasada').length
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold" style={{color:"var(--hc-text1)"}}>Faturas</h1>
+          <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>Cobranças geradas por usina e beneficiário</p>
+        </div>
+        <Button variant="outline" onClick={() => setModalRelatorio(true)}>
+          <Download size={16} />
+          Relatório PDF
+        </Button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-semibold tracking-widest" style={{color:"var(--hc-text3)"}}>FILTRAR POR</span>
+        <Select value={filtroMes} onValueChange={setFiltroMes}>
+          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os meses" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os meses</SelectItem>
+            {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+              <SelectItem key={m} value={m}>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][i]}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filtroAno} onValueChange={setFiltroAno}>
+          <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="Todos os anos" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os anos</SelectItem>
+            <SelectItem value="2024">2024</SelectItem>
+            <SelectItem value="2025">2025</SelectItem>
+            <SelectItem value="2026">2026</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filtroStatus} onValueChange={setFiltroStatus}>
+          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os status</SelectItem>
+            <SelectItem value="pendente">Pendente</SelectItem>
+            <SelectItem value="paga">Paga</SelectItem>
+            <SelectItem value="atrasada">Atrasada</SelectItem>
+            <SelectItem value="enviada">Enviada</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">{gruposFiltrados.reduce((a, g) => a + g.faturas.length, 0)} faturas</span>
+        {(filtroMes !== 'all' || filtroAno !== 'all' || filtroStatus !== 'todos' || busca) && (
+          <button onClick={() => { setFiltroMes('all'); setFiltroAno('all'); setFiltroStatus('todos'); setBusca('') }} className="text-xs" style={{color:"var(--hc-text3)"}}>✕ Limpar</button>
+        )}
+      </div>
+
+      {/* Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Total',     valor: total,     cor: '#e2e3df', border: 'rgba(255,255,255,0.06)' },
+          { label: 'Pendentes', valor: pendentes, cor: '#fbbf24',  border: 'rgba(251,191,36,0.2)' },
+          { label: 'Pagas',     valor: pagas,     cor: '#50c878',  border: 'rgba(80,200,120,0.2)' },
+          { label: 'Atrasadas', valor: atrasadas, cor: '#f87171',  border: 'rgba(248,113,113,0.2)' },
+        ].map(card => (
+          <div key={card.label} className="rounded-xl p-4" style={{border:`1px solid ${card.border}`,background:'rgba(255,255,255,0.02)'}}>
+            <p className="text-[9px] uppercase tracking-widest font-semibold mb-2" style={{color:'#5a6a5a'}}>{card.label}</p>
+            <p className="text-2xl sm:text-3xl font-bold" style={{color:card.cor}}>{card.valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Busca */}
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:"var(--hc-text3)"}} />
+        <Input placeholder="Buscar por cliente ou UC..." className="pl-9" value={busca} onChange={e => setBusca(e.target.value)} />
+      </div>
+
+      {loading ? (
+        <div className="text-xs" style={{color:"var(--hc-text3)"}}>Carregando...</div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {gruposFiltrados.map(g => {
+            const gId    = g.usina?.id || 'sem-usina'
+            const aberto = abertos.has(gId)
+            const totalKwh = g.faturas.reduce((a, f) => a + Number(f.kwh_alocado || 0), 0)
+            const totalVal = g.faturas.reduce((a, f) => a + Number(f.valor || 0), 0)
+            const nPagas   = g.faturas.filter(f => f.status === 'paga').length
+            const nPend    = g.faturas.filter(f => f.status === 'pendente' || f.status === 'atrasada').length
+
+            return (
+              <div key={gId} className="rounded-xl overflow-hidden" style={{background:"var(--hc-surface)",border:"1px solid rgba(255,255,255,0.06)"}}>
+                {/* Header grupo */}
+                <div className="flex items-center justify-between px-5 py-4 cursor-pointer transition-colors" style={{}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'} onClick={() => toggleGrupo(gId)}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
+                      <Sun size={16} className="text-yellow-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{g.usina?.nome || 'Sem Usina'}</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>{g.faturas.length} fatura{g.faturas.length !== 1 ? 's' : ''}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <div className="text-right hidden sm:block">
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{totalKwh.toLocaleString('pt-BR')} kWh</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>Total kWh</p>
+                    </div>
+                    <div className="text-right hidden sm:block">
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>Total R$</p>
+                    </div>
+                    <div className="hidden sm:flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{background:"rgba(80,200,120,0.1)",color:"var(--hc-accent)"}}>● {nPagas} PAGOS</span>
+                      {nPend > 0 && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{background:"rgba(251,191,36,0.1)",color:"#fbbf24"}}>● {nPend} PENDENTES</span>}
+                    </div>
+                    <div className="sm:hidden text-right">
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</p>
+                      <p className="text-[10px]" style={{color:"var(--hc-text3)"}}>{nPagas}p · {nPend}pend</p>
+                    </div>
+                    {aberto ? <ChevronUp size={16} style={{color:"var(--hc-text3)"}} /> : <ChevronDown size={16} style={{color:"var(--hc-text3)"}} />}
+                  </div>
+                </div>
+
+                {/* Tabela */}
+                {aberto && (
+                  <div className="overflow-x-auto" style={{borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+                    <table className="w-full text-sm min-w-[700px]">
+                      <thead>
+                        <tr style={{background:"var(--hc-row-alt)"}}>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Cliente</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>UC</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Leitura</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>kWh</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Desconto</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Valor</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Vencimento</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Status</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.faturas.map((f, i) => {
+                          const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground', bg: 'bg-muted', dot: 'bg-muted-foreground' }
+                          const isPendente = f.status === 'pendente' || f.status === 'atrasada'
+                          return (
+                            <tr key={f.id} className='transition-colors' style={{borderTop:'1px solid rgba(255,255,255,0.04)',background:i%2===0?'transparent':'rgba(255,255,255,0.015)'}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(80,200,120,0.03)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=i%2===0?'transparent':'rgba(255,255,255,0.015)'}>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0" style={{background:"rgba(80,200,120,0.12)",color:"var(--hc-accent)"}}>
+                                    {(f.beneficiario?.cliente?.nome || '?').substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-xs" style={{color:"var(--hc-text1)"}}>{f.beneficiario?.cliente?.nome || '—'}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{f.beneficiario?.uc_beneficiaria || '—'}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text2)"}}>{fmtData(f.data_leitura)}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text1)"}}>{Number(f.kwh_alocado).toFixed(0)} kWh</td>
+                              <td className="px-4 py-2.5">
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
+                                  ↓ {Number(f.desconto_percentual || 0).toFixed(0)}%
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 font-semibold text-xs" style={{color:"var(--hc-accent)"}}>{fmtMoeda(f.valor)}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text2)"}}>{fmtData(f.data_vencimento)}</td>
+                              <td className="px-4 py-2.5">
+                                <div className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium', st.bg, st.cor)}>
+                                  <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
+                                  {st.label}
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center gap-1">
+                                  {/* PDF fatura */}
+                                  <button onClick={e => baixarPDF(f, e)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Baixar PDF">
+                                    <FileText size={13} />
+                                  </button>
+                                  {/* Editar */}
+                                  {isPendente && (
+                                    <button onClick={e => { e.stopPropagation(); setFaturaSelecionada(f); setFormEditar({ valor: String(f.valor), kwh_alocado: String(f.kwh_alocado), tarifa_kwh: String(f.tarifa_kwh), desconto_percentual: String(f.desconto_percentual) }); setModalEditar(true) }}
+                                      className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Editar valor">
+                                      <Edit size={13} />
+                                    </button>
+                                  )}
+                                  {/* Boleto/PIX */}
+                                  {f.pix_copia_cola ? (
+                                    <button onClick={e => { e.stopPropagation(); setFaturaSelecionada(f); setPixCopied(false); setModalPix(true) }}
+                                      className="p-1.5 rounded hover:bg-muted transition-colors text-green-500 hover:text-green-400" title="Ver PIX">
+                                      <QrCode size={13} />
+                                    </button>
+                                  ) : isPendente ? (
+                                    <button onClick={e => { e.stopPropagation(); setFaturaSelecionada(f); setErroBoleto(''); setModalBoleto(true) }}
+                                      className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Extrair PIX do boleto">
+                                      <QrCode size={13} />
+                                    </button>
+                                  ) : null}
+                                  {/* Confirmar */}
+                                  {isPendente ? (
+                                    <button onClick={e => { e.stopPropagation(); setFaturaSelecionada(f); setFormaPagamento('pix'); setModalPagar(true) }}
+                                      className="px-2 py-1 rounded text-[10px] font-medium bg-green-500/10 text-green-500 hover:bg-green-500/20 transition-colors whitespace-nowrap" title="Confirmar pagamento">
+                                      CONFIRMAR
+                                    </button>
+                                  ) : (
+                                    <span className="px-2 py-1 rounded text-[10px] font-medium text-muted-foreground/50 whitespace-nowrap">
+                                      PIX · {fmtComp(f.data_vencimento)}
+                                    </span>
+                                  )}
+                                  {/* Excluir */}
+                                  <button onClick={e => { e.stopPropagation(); setFaturaSelecionada(f); setModalExcluir(true) }}
+                                    className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive" title="Excluir">
+                                    <Trash2 size={13} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        {/* Subtotal */}
+                        <tr className="border-t border-border/50 bg-muted/20">
+                          <td colSpan={3} className="px-4 py-2 text-xs" style={{color:"var(--hc-text3)"}}>Subtotal do grupo</td>
+                          <td className="px-4 py-2 text-xs font-medium" style={{color:"var(--hc-accent)"}}>{totalKwh.toLocaleString('pt-BR')} kWh</td>
+                          <td />
+                          <td className="px-4 py-2 text-xs font-medium" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</td>
+                          <td colSpan={3} />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal pagar */}
+      <Dialog open={modalPagar} onOpenChange={setModalPagar}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Confirmar pagamento</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Valor</p>
+              <p className="font-medium text-lg text-green-500">{fmtMoeda(faturaSelecionada?.valor || 0)}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Forma de pagamento</Label>
+              <Select value={formaPagamento} onValueChange={setFormaPagamento}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pix">PIX</SelectItem>
+                  <SelectItem value="boleto">Boleto</SelectItem>
+                  <SelectItem value="ted">TED</SelectItem>
+                  <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                  <SelectItem value="outro">Outro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalPagar(false)}>Cancelar</Button>
+            <Button onClick={marcarPaga} disabled={loadingPagar}>
+              <CheckCircle size={16} />
+              {loadingPagar ? 'Confirmando...' : 'Confirmar pagamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal editar valor */}
+      <Dialog open={modalEditar} onOpenChange={setModalEditar}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar valor da fatura</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              Altere o valor cobrado desta fatura. Os demais campos (kWh, tarifa, desconto) não serão afetados.
+            </p>
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>kWh alocado</Label>
+                <Input type="number" value={formEditar.kwh_alocado} onChange={e => setFormEditar(p => ({ ...p, kwh_alocado: e.target.value, valor: '' }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Tarifa (R$/kWh)</Label>
+                <Input type="number" step="0.000001" value={formEditar.tarifa_kwh} onChange={e => setFormEditar(p => ({ ...p, tarifa_kwh: e.target.value, valor: '' }))} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Desconto (%)</Label>
+              <Input type="number" min={0} max={100} value={formEditar.desconto_percentual} onChange={e => setFormEditar(p => ({ ...p, desconto_percentual: e.target.value, valor: '' }))} />
+            </div>
+
+            {/* Preview calculado ao vivo */}
+            {(() => {
+              const kwh     = parseFloat(formEditar.kwh_alocado) || 0
+              const tarifa  = parseFloat(formEditar.tarifa_kwh) || 0
+              const desc    = parseFloat(formEditar.desconto_percentual) || 0
+              const bruto   = kwh * tarifa
+              const calculado = parseFloat((bruto - bruto * desc / 100).toFixed(2))
+              return (
+                <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-muted/50 border border-border">
+                  <span className="text-sm text-muted-foreground">Valor calculado</span>
+                  <span className="text-lg font-bold text-green-500">
+                    {calculado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+              )
+            })()}
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Ou informe o valor manualmente (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={formEditar.valor}
+                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))}
+                placeholder="Deixe em branco para usar o valor calculado"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalEditar(false)}>Cancelar</Button>
+            <Button onClick={salvarEdicao} disabled={loadingEditar}>
+              {loadingEditar ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal excluir */}
+      <Dialog open={modalExcluir} onOpenChange={setModalExcluir}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir fatura</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Tem certeza que deseja excluir a fatura de{' '}
+            <span className="font-medium text-foreground">{faturaSelecionada?.beneficiario?.cliente?.nome}</span>
+            {' '}no valor de{' '}
+            <span className="font-medium text-foreground">{fmtMoeda(faturaSelecionada?.valor || 0)}</span>?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalExcluir(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={excluirFatura} disabled={loadingExcluir}>
+              {loadingExcluir ? 'Excluindo...' : 'Confirmar exclusão'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal PIX */}
+      <Dialog open={modalPix} onOpenChange={setModalPix}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>PIX copia e cola</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div>
+              <p className="text-sm text-muted-foreground">Cliente</p>
+              <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Código PIX</Label>
+              <div className="p-3 rounded-lg bg-muted font-mono text-xs break-all select-all">{faturaSelecionada?.pix_copia_cola}</div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalPix(false)}>Fechar</Button>
+            <Button onClick={copiarPix}>
+              <Copy size={14} />
+              {pixCopied ? 'Copiado!' : 'Copiar código'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal boleto */}
+      <Dialog open={modalBoleto} onOpenChange={setModalBoleto}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Extrair PIX do boleto</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Envie o PDF do boleto Energisa para extrair o código PIX automaticamente.
+            </p>
+            <input ref={boletoRef} type="file" accept=".pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadBoleto(f) }} />
+            <Button variant="outline" onClick={() => boletoRef.current?.click()} disabled={loadingBoleto}>
+              {loadingBoleto ? 'Processando...' : 'Selecionar PDF do boleto'}
+            </Button>
+            {erroBoleto && <p className="text-sm text-destructive">{erroBoleto}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalBoleto(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal relatório */}
+      <Dialog open={modalRelatorio} onOpenChange={setModalRelatorio}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Gerar relatório PDF</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Usina</Label>
+              <Select value={relUsina} onValueChange={setRelUsina}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as usinas</SelectItem>
+                  {usinas.map(u => <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Mês</Label>
+                <Select value={relMes} onValueChange={setRelMes}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m, i) => (
+                      <SelectItem key={m} value={m}>{['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'][i]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Ano</Label>
+                <Select value={relAno} onValueChange={setRelAno}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2025">2025</SelectItem>
+                    <SelectItem value="2026">2026</SelectItem>
+                    <SelectItem value="2027">2027</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {statusRel && <p className={`text-sm ${statusRel.includes('Erro') ? 'text-destructive' : 'text-green-500'}`}>{statusRel}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalRelatorio(false)}>Cancelar</Button>
+            <Button onClick={gerarRelatorio} disabled={loadingRel}>
+              <Download size={16} />
+              {loadingRel ? 'Gerando...' : 'Gerar e baixar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}import { useEffect, useState, useRef } from 'react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { Search, UserPlus, ChevronDown, ChevronUp, Sun, Edit, Trash2, BarChart2, TrendingUp, Zap, DollarSign } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { apiFetch } from '@/hooks/useApi'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+
+interface Cliente {
+  id: string
+  nome: string
+  telefone: string
+  email: string
+  cidade: string
+  ativo: boolean
+  cpf_cnpj: string
+  cep: string
+  logradouro: string
+  numero: string
+  bairro: string
+  estado_endereco: string
+  uc_beneficiaria: string
+  dia_vencimento: number
+  desconto_percentual: number
+}
+
+interface Usina {
+  id: string
+  nome: string
+  potencia_kwp: number
+  distribuidora: string
+  uc_geradora: string
+  cidade: string
+  estado: string
+}
+
+interface Beneficiario {
+  id: string
+  uc_beneficiaria: string
+  desconto_percentual: number
+  percentual_rateio: number
+  ativo: boolean
+  cliente?: Cliente
+}
+
+interface GrupoUsina {
+  usina: Usina | null
+  beneficiarios: Beneficiario[]
+}
+
+interface NovoCliente {
+  nome: string; telefone: string; email: string; cpf_cnpj: string
+  cep: string; logradouro: string; numero: string; bairro: string
+  cidade: string; estado_endereco: string; uc_beneficiaria: string
+  dia_vencimento: string; desconto_percentual: string
+}
+
+export default function Clientes() {
+  const [grupos,    setGrupos]    = useState<GrupoUsina[]>([])
+  const [clientes,  setClientes]  = useState<Cliente[]>([])
+  const [busca,     setBusca]     = useState('')
+  const [loading,   setLoading]   = useState(true)
+  const [abertos,   setAbertos]   = useState<Set<string>>(new Set(['sem-usina']))
+
+  const [loadingCSV,    setLoadingCSV]    = useState(false)
+  const csvRef = useRef<HTMLInputElement>(null)
+
+  const [modalHistorico,    setModalHistorico]    = useState(false)
+  const [clienteHistorico,  setClienteHistorico]  = useState<Cliente | null>(null)
+  const [historicoFaturas,  setHistoricoFaturas]  = useState<any[]>([])
+  const [loadingHistorico,  setLoadingHistorico]  = useState(false)
+
+  const [modalNovo,     setModalNovo]     = useState(false)
+  const [loadingSalvar, setLoadingSalvar] = useState(false)
+  const [erro,          setErro]          = useState('')
+  const [form, setForm] = useState<NovoCliente>({
+    nome: '', telefone: '', email: '', cpf_cnpj: '',
+    cep: '', logradouro: '', numero: '', bairro: '',
+    cidade: '', estado_endereco: '', uc_beneficiaria: '',
+    dia_vencimento: '10', desconto_percentual: '0'
+  })
+
+  const [modalEditar,       setModalEditar]       = useState(false)
+  const [clienteSelecionado,setClienteSelecionado] = useState<Cliente | null>(null)
+  const [formEditar,        setFormEditar]         = useState<NovoCliente>({
+    nome: '', telefone: '', email: '', cpf_cnpj: '',
+    cep: '', logradouro: '', numero: '', bairro: '',
+    cidade: '', estado_endereco: '', uc_beneficiaria: '',
+    dia_vencimento: '10', desconto_percentual: '0'
+  })
+  const [loadingEditar, setLoadingEditar] = useState(false)
+  const [erroEditar,    setErroEditar]    = useState('')
+  const [modalExcluir,  setModalExcluir]  = useState(false)
+  const [loadingExcluir,setLoadingExcluir]= useState(false)
+
+  async function carregar() {
+    const [clientesRes, usinasRes] = await Promise.all([
+      apiFetch<{ data: Cliente[] }>('/api/clientes'),
+      apiFetch<{ data: Usina[] }>('/api/usinas'),
+    ])
+
+    const clientesData = clientesRes.data || []
+    const usinasData   = usinasRes.data || []
+    setClientes(clientesData)
+
+    // Busca beneficiários de cada usina
+    const gruposTemp: GrupoUsina[] = []
+    const clientesVinculados = new Set<string>()
+
+    for (const usina of usinasData) {
+      const r = await apiFetch<any>(`/api/usinas/${usina.id}/beneficiarios`)
+      const benefs: Beneficiario[] = r?.data?.beneficiarios || []
+      benefs.forEach(b => { if (b.cliente?.id) clientesVinculados.add(b.cliente.id) })
+      gruposTemp.push({ usina, beneficiarios: benefs })
+    }
+
+    // Clientes sem usina
+    const semUsina = clientesData.filter(c => !clientesVinculados.has(c.id))
+    if (semUsina.length > 0) {
+      gruposTemp.push({
+        usina: null,
+        beneficiarios: semUsina.map(c => ({
+          id: c.id,
+          uc_beneficiaria: c.uc_beneficiaria || '—',
+          desconto_percentual: c.desconto_percentual || 0,
+          percentual_rateio: 0,
+          ativo: c.ativo,
+          cliente: c,
+        }))
+      })
+    }
+
+    setGrupos(gruposTemp)
+    // Abre todos os grupos por padrão
+    setAbertos(new Set(gruposTemp.map(g => g.usina?.id || 'sem-usina')))
+  }
+
+  useEffect(() => {
+    carregar().finally(() => setLoading(false))
+  }, [])
+
+  function toggleGrupo(id: string) {
+    setAbertos(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function abrirEditar(c: Cliente) {
+    setClienteSelecionado(c)
+    setFormEditar({
+      nome: c.nome || '', telefone: c.telefone || '', email: c.email || '',
+      cpf_cnpj: c.cpf_cnpj || '', cep: c.cep || '', logradouro: c.logradouro || '',
+      numero: c.numero || '', bairro: c.bairro || '', cidade: c.cidade || '',
+      estado_endereco: c.estado_endereco || '', uc_beneficiaria: c.uc_beneficiaria || '',
+      dia_vencimento: String(c.dia_vencimento || 10),
+      desconto_percentual: String(c.desconto_percentual || 0),
+    })
+    setErroEditar('')
+    setModalEditar(true)
+  }
+
+  async function abrirHistorico(c: Cliente) {
+    setClienteHistorico(c)
+    setModalHistorico(true)
+    setLoadingHistorico(true)
+    try {
+      const r = await apiFetch<{ data: any[] }>('/api/faturas')
+      const faturas = (r.data || []).filter((f: any) => f.beneficiario?.cliente?.id === c.id)
+      setHistoricoFaturas(faturas)
+    } finally {
+      setLoadingHistorico(false)
+    }
+  }
+
+  async function importarCSV(file: File) {
+    setLoadingCSV(true)
+    const token = localStorage.getItem('token')
+    const formData = new FormData()
+    formData.append('csv', file)
+    try {
+      const res = await fetch('/api/clientes/importar', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        alert(data.erro || 'Erro ao importar CSV')
+        return
+      }
+      alert(`Importados: ${data.importados || 0}, Atualizados: ${data.atualizados || 0}`)
+      await carregar()
+    } catch {
+      alert('Erro ao importar CSV')
+    } finally {
+      setLoadingCSV(false)
+      if (csvRef.current) csvRef.current.value = ''
+    }
+  }
+
+  async function salvarCliente() {
+    if (!form.nome || !form.cpf_cnpj || !form.telefone) {
+      setErro('Nome, CPF/CNPJ e telefone são obrigatórios')
+      return
+    }
+    setErro('')
+    setLoadingSalvar(true)
+    try {
+      await apiFetch('/api/clientes', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, dia_vencimento: Number(form.dia_vencimento), desconto_percentual: Number(form.desconto_percentual) }),
+      })
+      setModalNovo(false)
+      setForm({ nome: '', telefone: '', email: '', cpf_cnpj: '', cep: '', logradouro: '', numero: '', bairro: '', cidade: '', estado_endereco: '', uc_beneficiaria: '', dia_vencimento: '10', desconto_percentual: '0' })
+      await carregar()
+    } catch {
+      setErro('Erro ao salvar cliente')
+    } finally {
+      setLoadingSalvar(false)
+    }
+  }
+
+  async function salvarEdicao() {
+    if (!formEditar.nome || !formEditar.cpf_cnpj || !formEditar.telefone) {
+      setErroEditar('Nome, CPF/CNPJ e telefone são obrigatórios')
+      return
+    }
+    setLoadingEditar(true)
+    try {
+      await apiFetch(`/api/clientes/${clienteSelecionado?.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...formEditar, dia_vencimento: Number(formEditar.dia_vencimento), desconto_percentual: Number(formEditar.desconto_percentual) }),
+      })
+      setModalEditar(false)
+      await carregar()
+    } catch {
+      setErroEditar('Erro ao salvar alterações')
+    } finally {
+      setLoadingEditar(false)
+    }
+  }
+
+  async function excluirCliente() {
+    if (!clienteSelecionado) return
+    setLoadingExcluir(true)
+    try {
+      await apiFetch(`/api/clientes/${clienteSelecionado.id}`, { method: 'DELETE' })
+      setModalExcluir(false)
+      setModalEditar(false)
+      await carregar()
+    } finally {
+      setLoadingExcluir(false)
+    }
+  }
+
+  const q = busca.toLowerCase()
+  const gruposFiltrados = grupos.map(g => ({
+    ...g,
+    beneficiarios: g.beneficiarios.filter(b =>
+      !q ||
+      b.cliente?.nome?.toLowerCase().includes(q) ||
+      b.uc_beneficiaria?.includes(q) ||
+      b.cliente?.cpf_cnpj?.includes(q) ||
+      b.cliente?.telefone?.includes(q)
+    )
+  })).filter(g => g.beneficiarios.length > 0)
+
+  const totalClientes = clientes.length
+
+  const FormFields = ({ f, setF }: { f: NovoCliente; setF: (fn: (p: NovoCliente) => NovoCliente) => void }) => (
+    <div className="flex flex-col gap-4 py-2">
+      <div className="flex flex-col gap-1.5">
+        <Label>Nome *</Label>
+        <Input placeholder="Nome completo" value={f.nome} onChange={e => setF(p => ({ ...p, nome: e.target.value }))} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label>Telefone *</Label>
+          <Input placeholder="(67) 99999-9999" value={f.telefone} onChange={e => setF(p => ({ ...p, telefone: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>CPF/CNPJ *</Label>
+          <Input placeholder="000.000.000-00" value={f.cpf_cnpj} onChange={e => setF(p => ({ ...p, cpf_cnpj: e.target.value }))} />
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label>Email</Label>
+        <Input placeholder="email@exemplo.com" value={f.email} onChange={e => setF(p => ({ ...p, email: e.target.value }))} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label>UC Beneficiária</Label>
+        <Input placeholder="3647072" value={f.uc_beneficiaria} onChange={e => setF(p => ({ ...p, uc_beneficiaria: e.target.value }))} />
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="flex flex-col gap-1.5 col-span-2">
+          <Label>Logradouro</Label>
+          <Input placeholder="Rua, Av..." value={f.logradouro} onChange={e => setF(p => ({ ...p, logradouro: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Número</Label>
+          <Input placeholder="123" value={f.numero} onChange={e => setF(p => ({ ...p, numero: e.target.value }))} />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label>Bairro</Label>
+          <Input value={f.bairro} onChange={e => setF(p => ({ ...p, bairro: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Cidade</Label>
+          <Input placeholder="Bataguassu" value={f.cidade} onChange={e => setF(p => ({ ...p, cidade: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>UF</Label>
+          <Input placeholder="MS" maxLength={2} value={f.estado_endereco} onChange={e => setF(p => ({ ...p, estado_endereco: e.target.value.toUpperCase() }))} />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label>Dia de vencimento</Label>
+          <Input type="number" min={1} max={28} value={f.dia_vencimento} onChange={e => setF(p => ({ ...p, dia_vencimento: e.target.value }))} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>Desconto (%)</Label>
+          <Input type="number" min={0} max={100} value={f.desconto_percentual} onChange={e => setF(p => ({ ...p, desconto_percentual: e.target.value }))} />
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold" style={{color:"var(--hc-text1)"}}>Clientes</h1>
+          <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>{totalClientes} clientes cadastrados</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <input
+            ref={csvRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) importarCSV(f) }}
+          />
+          <Button variant="outline" onClick={() => csvRef.current?.click()} disabled={loadingCSV}>
+            {loadingCSV ? 'Importando...' : 'Importar CSV'}
+          </Button>
+          <Button onClick={() => setModalNovo(true)}>
+            <UserPlus size={16} />
+            Novo cliente
+          </Button>
+        </div>
+      </div>
+
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:"var(--hc-text3)"}} />
+        <Input
+          placeholder="Buscar por nome, UC, CPF ou telefone..."
+          className="pl-9"
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-xs" style={{color:"var(--hc-text3)"}}>Carregando...</div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {gruposFiltrados.map(g => {
+            const gId    = g.usina?.id || 'sem-usina'
+            const aberto = abertos.has(gId)
+            const descontoMedio = g.beneficiarios.length > 0
+              ? g.beneficiarios.reduce((a, b) => a + Number(b.desconto_percentual || 0), 0) / g.beneficiarios.length
+              : 0
+
+            return (
+              <div key={gId} className="rounded-xl overflow-hidden" style={{background:"var(--hc-surface)",border:"1px solid rgba(255,255,255,0.06)"}}>
+                {/* Header do grupo */}
+                <div
+                  className="flex items-center justify-between px-5 py-4 cursor-pointer transition-colors" onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'}
+                  onClick={() => toggleGrupo(gId)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', g.usina ? 'bg-yellow-500/10' : 'bg-muted')}>
+                      <Sun size={16} className={g.usina ? 'text-yellow-500' : 'text-muted-foreground'} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{g.usina?.nome || 'Sem Usina Atribuída'}</p>
+                      {g.usina && (
+                        <p className="text-xs mt-0.5 hidden sm:block" style={{color:"var(--hc-text3)"}}>
+                          {g.usina.distribuidora} · UC {g.usina.uc_geradora} · {Number(g.usina.potencia_kwp).toFixed(1)} kWp · {g.usina.cidade}/{g.usina.estado}
+                        </p>
+                      )}
+                      {!g.usina && (
+                        <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>Clientes não vinculados a nenhuma usina</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-xs" style={{color:"var(--hc-text2)"}}>{g.beneficiarios.length} cliente{g.beneficiarios.length !== 1 ? 's' : ''}</p>
+                      {g.usina && <p className="text-xs" style={{color:"var(--hc-text3)"}}>{descontoMedio.toFixed(1)}% desc. médio</p>}
+                    </div>
+                    <div className='hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium' style={{background:g.usina?'rgba(80,200,120,0.1)':'rgba(251,191,36,0.1)',color:g.usina?'#50c878':'#fbbf24'}}>
+                      <div className='w-1.5 h-1.5 rounded-full' style={{background:g.usina?'#50c878':'#fbbf24'}} />
+                      {g.usina ? 'Ativa' : 'Pendente vínculo'}
+                    </div>
+                    {aberto ? <ChevronUp size={16} style={{color:'#5a6a5a'}} /> : <ChevronDown size={16} style={{color:'#5a6a5a'}} />}
+                  </div>
+                </div>
+
+                {/* Tabela de clientes */}
+                {aberto && (
+                  <div className="overflow-x-auto" style={{borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+                    <table className="w-full text-sm min-w-[700px]">
+                      <thead>
+                        <tr style={{background:"var(--hc-row-alt)"}}>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Nome</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>UC</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>CPF/CNPJ</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Desconto</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Telefone</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Email</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Status</th>
+                          <th className="text-left px-5 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.beneficiarios.map((b, i) => {
+                          const c = b.cliente
+                          if (!c) return null
+                          return (
+                            <tr key={b.id} className='transition-colors' style={{borderTop:'1px solid rgba(255,255,255,0.04)',background:i%2===0?'transparent':'rgba(255,255,255,0.015)'}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(80,200,120,0.03)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=i%2===0?'transparent':'rgba(255,255,255,0.015)'}>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{background:"rgba(80,200,120,0.12)",color:"var(--hc-accent)"}}>
+                                    {c.nome.substring(0, 2).toUpperCase()}
+                                  </div>
+                                  <span className="font-medium text-sm" style={{color:"var(--hc-text1)"}}>{c.nome}</span>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{b.uc_beneficiaria || '—'}</td>
+                              <td className="px-5 py-3 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{c.cpf_cnpj || '—'}</td>
+                              <td className="px-5 py-3">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={{background:"rgba(80,200,120,0.1)",color:"var(--hc-accent)"}}>
+                                  ↓ {Number(b.desconto_percentual || 0).toFixed(0)}%
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-xs" style={{color:"var(--hc-text2)"}}>{c.telefone || '—'}</td>
+                              <td className="px-5 py-3 text-xs" style={{color:"var(--hc-text2)"}}>{c.email || '—'}</td>
+                              <td className="px-5 py-3">
+                                <div className='inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium' style={{background:b.ativo?'rgba(80,200,120,0.1)':'rgba(255,255,255,0.05)',color:b.ativo?'#50c878':'#5a6a5a'}}>
+                                  <div className='w-1.5 h-1.5 rounded-full' style={{background:b.ativo?'#50c878':'#5a6a5a'}} />
+                                  {b.ativo ? 'Ativo' : 'Inativo'}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3">
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => abrirHistorico(c)}
+                                    className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                    title="Histórico do cliente"
+                                  >
+                                    <BarChart2 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => abrirEditar(c)}
+                                    className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                    title="Editar cliente"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => { setClienteSelecionado(c); setModalExcluir(true) }}
+                                    className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                                    title="Excluir cliente"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                        {/* Rodapé do grupo */}
+                        {g.usina && (
+                          <tr style={{borderTop:"1px solid rgba(255,255,255,0.04)",background:"var(--hc-row-alt)"}}>
+                            <td colSpan={3} className="px-5 py-2 text-xs" style={{color:"var(--hc-text3)"}}>
+                              Total desta usina
+                            </td>
+                            <td className="px-5 py-2">
+                              <span className="text-xs font-medium" style={{color:"var(--hc-accent)"}}>{g.beneficiarios.length} clientes</span>
+                            </td>
+                            <td className="px-5 py-2">
+                              <span className="text-xs" style={{color:"var(--hc-text3)"}}>{descontoMedio.toFixed(1)}% desc. médio</span>
+                            </td>
+                            <td colSpan={3} />
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Modal histórico cliente */}
+      <Dialog open={modalHistorico} onOpenChange={setModalHistorico}>
+        <DialogContent className="!max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Histórico · {clienteHistorico?.nome}</DialogTitle>
+          </DialogHeader>
+          {loadingHistorico ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Carregando...</p>
+          ) : (() => {
+            const totalRecebido = historicoFaturas.filter(f => f.status === 'paga').reduce((a, f) => a + Number(f.valor || 0), 0)
+            const emAberto = historicoFaturas
+              .filter(f => f.status === 'pendente' || f.status === 'atrasada')
+              .reduce((a, f) => a + Number(f.valor || 0), 0)
+            const kwhTotal      = historicoFaturas.reduce((a, f) => a + Number(f.kwh_alocado || 0), 0)
+            const economia      = historicoFaturas.reduce((a, f) => a + Number(f.valor_desconto || 0), 0)
+
+            return (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total recebido', valor: Number(totalRecebido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), icon: DollarSign, cor: 'text-green-500', bg: 'bg-green-500/10' },
+                    { label: 'Em aberto',      valor: Number(emAberto).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),      icon: TrendingUp,  cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+                    { label: 'kWh totais',     valor: `${kwhTotal.toLocaleString('pt-BR')} kWh`,                                             icon: Zap,         cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
+                    { label: 'Economia total', valor: Number(economia).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),       icon: BarChart2,   cor: 'text-purple-500', bg: 'bg-purple-500/10' },
+                  ].map(k => {
+                    const Icon = k.icon
+                    return (
+                      <div key={k.label} className={`rounded-lg border bg-card p-3 flex flex-col gap-2`}>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${k.bg}`}>
+                          <Icon size={14} className={k.cor} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                          <p className={`text-sm font-bold ${k.cor}`}>{k.valor}</p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {historicoFaturas.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">Nenhuma fatura encontrada</p>
+                ) : (
+                  <div className="rounded-lg border border-border overflow-x-auto -mx-1">
+                    <table className="w-full text-sm min-w-[480px]">
+                      <thead>
+                        <tr className="bg-muted text-muted-foreground text-xs">
+                          <th className="text-left px-4 py-2.5 font-medium">Leitura</th>
+                          <th className="text-left px-4 py-2.5 font-medium">kWh</th>
+                          <th className="text-left px-4 py-2.5 font-medium">Desconto</th>
+                          <th className="text-left px-4 py-2.5 font-medium">Valor</th>
+                          <th className="text-left px-4 py-2.5 font-medium">Vencimento</th>
+                          <th className="text-left px-4 py-2.5 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {historicoFaturas.map((f: any, i: number) => {
+                          const comp = f.competencia ? new Date(f.competencia + 'T12:00:00') : null
+                          const compStr = comp ? `${String(comp.getMonth() + 1).padStart(2,'0')}/${comp.getFullYear()}` : '—'
+                          const venc = f.data_vencimento ? f.data_vencimento.substring(0,10).split('-').reverse().join('/') : '—'
+                          const stCor: Record<string, string> = { paga: 'text-green-500', pendente: 'text-yellow-500', atrasada: 'text-red-500', enviada: 'text-blue-500' }
+                          return (
+                            <tr key={f.id} className={cn('border-t border-border', i % 2 === 0 ? '' : 'bg-muted/10')}>
+                              <td className="px-4 py-2.5 text-muted-foreground">{compStr}</td>
+                              <td className="px-4 py-2.5">{Number(f.kwh_alocado || 0).toFixed(0)} kWh</td>
+                              <td className="px-4 py-2.5 text-green-500">{Number(f.desconto_percentual || 0).toFixed(0)}%</td>
+                              <td className="px-4 py-2.5 font-medium">{Number(f.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                              <td className="px-4 py-2.5 text-muted-foreground">{venc}</td>
+                              <td className="px-4 py-2.5">
+                                <span className={cn('text-xs font-medium capitalize', stCor[f.status] || 'text-muted-foreground')}>{f.status}</span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalHistorico(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal novo cliente */}
+      <Dialog open={modalNovo} onOpenChange={setModalNovo}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Novo cliente</DialogTitle></DialogHeader>
+          <FormFields f={form} setF={setForm} />
+          {erro && <p className="text-sm text-destructive mt-2">{erro}</p>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalNovo(false)}>Cancelar</Button>
+            <Button onClick={salvarCliente} disabled={loadingSalvar}>{loadingSalvar ? 'Salvando...' : 'Salvar cliente'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal editar cliente */}
+      <Dialog open={modalEditar} onOpenChange={setModalEditar}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Editar cliente</DialogTitle></DialogHeader>
+          <FormFields f={formEditar} setF={setFormEditar} />
+          {erroEditar && <p className="text-sm text-destructive mt-2">{erroEditar}</p>}
+          <DialogFooter className="flex justify-between">
+            <Button variant="destructive" onClick={() => setModalExcluir(true)}>Excluir cliente</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setModalEditar(false)}>Cancelar</Button>
+              <Button onClick={salvarEdicao} disabled={loadingEditar}>{loadingEditar ? 'Salvando...' : 'Salvar alterações'}</Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal excluir */}
+      <Dialog open={modalExcluir} onOpenChange={setModalExcluir}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Excluir cliente</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Tem certeza que deseja excluir <span className="font-medium text-foreground">{clienteSelecionado?.nome}</span>? Esta ação não pode ser desfeita.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalExcluir(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={excluirCliente} disabled={loadingExcluir}>
+              {loadingExcluir ? 'Excluindo...' : 'Confirmar exclusão'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}import { useEffect, useState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Search, Plus, Sun, Zap, Users, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { apiFetch } from '@/hooks/useApi'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+interface Usina {
+  id: string
+  nome: string
+  potencia_kwp: number
+  distribuidora: string
+  uc_geradora: string
+  cidade: string
+  estado: string
+  tipo: string
+  beneficiarios?: { id: string }[]
+}
+
+export default function Usinas() {
+  const [usinas,          setUsinas]          = useState<Usina[]>([])
+  const [busca,           setBusca]           = useState('')
+  const [loading,         setLoading]         = useState(true)
+  const [subTab,          setSubTab]          = useState<'usinas' | 'geracao'>('usinas')
+  const [geracoes,        setGeracoes]        = useState<any[]>([])
+  const [loadingGeracoes, setLoadingGeracoes] = useState(false)
+  const [usinaFiltroGer,  setUsinaFiltroGer]  = useState('all')
+  const [removendoBenef,  setRemovendoBenef]  = useState<string | null>(null)
+
+  const [modalNova,     setModalNova]     = useState(false)
+  const [loadingSalvar, setLoadingSalvar] = useState(false)
+  const [erro,          setErro]          = useState('')
+  const [form, setForm] = useState({
+    nome: '', potencia_kwp: '', distribuidora: '',
+    uc_geradora: '', cidade: '', estado: '', tipo: 'propria'
+  })
+
+  const [modalBenef,    setModalBenef]    = useState(false)
+  const [usinaSelecionada, setUsinaSelecionada] = useState<Usina | null>(null)
+  const [beneficiarios, setBeneficiarios] = useState<any[]>([])
+  const [loadingBenef,  setLoadingBenef]  = useState(false)
+
+  const [modalAddBenef,  setModalAddBenef]  = useState(false)
+  const [clientes,       setClientes]       = useState<{ id: string; nome: string }[]>([])
+  const [loadingAddBenef,setLoadingAddBenef]= useState(false)
+  const [erroAddBenef,   setErroAddBenef]   = useState('')
+  const [formBenef, setFormBenef] = useState({
+    cliente_id: '', uc_beneficiaria: '', desconto_percentual: '0', dia_vencimento: '10',
+  })
+
+  async function carregarTodasGeracoes() {
+    setLoadingGeracoes(true)
+    const r = await apiFetch<{ data: any[] }>('/api/geracoes')
+    setGeracoes(r.data || [])
+    setLoadingGeracoes(false)
+  }
+
+  async function carregar() {
+    const r = await apiFetch<{ data: Usina[] }>('/api/usinas')
+    setUsinas(r.data || [])
+  }
+
+  async function carregarGeracoes(usinaId: string) {
+    if (!usinaId) return
+    setLoadingGeracoes(true)
+    const r = await apiFetch<{ data: any[] }>(`/api/geracoes/usina/${usinaId}`)
+    setGeracoes(r.data || [])
+    setLoadingGeracoes(false)
+  }
+
+  async function salvarUsina() {
+    if (!form.nome || !form.potencia_kwp || !form.distribuidora || !form.uc_geradora) {
+      setErro('Nome, potência, distribuidora e UC geradora são obrigatórios')
+      return
+    }
+    setErro('')
+    setLoadingSalvar(true)
+    try {
+      await apiFetch('/api/usinas', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, potencia_kwp: Number(form.potencia_kwp) }),
+      })
+      setModalNova(false)
+      setForm({ nome: '', potencia_kwp: '', distribuidora: '', uc_geradora: '', cidade: '', estado: '', tipo: 'propria' })
+      await carregar()
+    } catch {
+      setErro('Erro ao salvar usina')
+    } finally {
+      setLoadingSalvar(false)
+    }
+  }
+
+  async function abrirBeneficiarios(u: Usina) {
+    setUsinaSelecionada(u)
+    setModalBenef(true)
+    setLoadingBenef(true)
+    try {
+      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${u.id}/beneficiarios`)
+      setBeneficiarios((r as any).data?.beneficiarios || [])
+    } finally {
+      setLoadingBenef(false)
+    }
+  }
+
+  async function salvarBeneficiario() {
+    if (!formBenef.cliente_id || !formBenef.uc_beneficiaria) {
+      setErroAddBenef('Cliente e UC beneficiária são obrigatórios')
+      return
+    }
+    setErroAddBenef('')
+    setLoadingAddBenef(true)
+    try {
+      await apiFetch(`/api/usinas/${usinaSelecionada?.id}/beneficiarios`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cliente_id: formBenef.cliente_id,
+          uc_beneficiaria: formBenef.uc_beneficiaria,
+          desconto_percentual: Number(formBenef.desconto_percentual),
+          dia_vencimento: Number(formBenef.dia_vencimento),
+        }),
+      })
+      setModalAddBenef(false)
+      setFormBenef({ cliente_id: '', uc_beneficiaria: '', desconto_percentual: '0', dia_vencimento: '10' })
+      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${usinaSelecionada?.id}/beneficiarios`)
+      setBeneficiarios((r as any).data?.beneficiarios || [])
+      setModalBenef(true)
+    } finally {
+      setLoadingAddBenef(false)
+    }
+  }
+
+  async function removerBeneficiario(benefId: string) {
+    if (!usinaSelecionada) return
+    setRemovendoBenef(benefId)
+    try {
+      await apiFetch(`/api/usinas/${usinaSelecionada.id}/beneficiarios/${benefId}`, { method: 'DELETE' })
+      const r = await apiFetch<{ data: any[] }>(`/api/usinas/${usinaSelecionada.id}/beneficiarios`)
+      setBeneficiarios((r as any).data?.beneficiarios || [])
+    } finally {
+      setRemovendoBenef(null)
+    }
+  }
+
+  useEffect(() => {
+    carregar().finally(() => setLoading(false))
+    apiFetch<{ data: { id: string; nome: string }[] }>('/api/clientes')
+      .then(r => setClientes(r.data || []))
+    carregarTodasGeracoes()
+  }, [])
+
+  const filtradas = usinas.filter(u =>
+    u.nome.toLowerCase().includes(busca.toLowerCase()) ||
+    u.cidade?.toLowerCase().includes(busca.toLowerCase()) ||
+    u.uc_geradora?.includes(busca)
+  )
+
+  const potenciaTotal = usinas.reduce((acc, u) => acc + Number(u.potencia_kwp), 0)
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Usinas</h1>
+          <p className="text-muted-foreground text-sm mt-1">{usinas.length} usinas cadastradas</p>
+        </div>
+        <Button onClick={() => setModalNova(true)}>
+          <Plus size={16} />
+          Nova usina
+        </Button>
+      </div>
+
+      <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+        {[
+          { label: 'Usinas', value: 'usinas' },
+          { label: 'Histórico Geração', value: 'geracao' },
+        ].map((t, i) => (
+          <button
+            key={t.value}
+            onClick={() => setSubTab(t.value as any)}
+            className={cn(
+              'px-4 py-2 text-sm font-medium transition-colors',
+              i > 0 && 'border-l border-border',
+              subTab === t.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'usinas' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { label: 'Total de usinas', valor: usinas.length, sub: 'plantas cadastradas', icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+              { label: 'Potência total', valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap, cor: 'text-blue-500', bg: 'bg-blue-500/10' },
+              { label: 'Distribuidoras', valor: new Set(usinas.map(u => u.distribuidora)).size, sub: 'concessionárias', icon: Users, cor: 'text-green-500', bg: 'bg-green-500/10' },
+            ].map(k => {
+              const Icon = k.icon
+              return (
+                <div key={k.label} className="rounded-xl border border-border bg-card p-4 flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${k.bg}`}>
+                    <Icon size={18} className={k.cor} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{k.label}</p>
+                    <p className={`text-lg sm:text-2xl font-bold leading-tight ${k.cor}`}>{k.valor}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por nome, cidade ou UC geradora..."
+              className="pl-9"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+            />
+          </div>
+
+          {loading ? (
+            <div className="text-muted-foreground text-sm">Carregando...</div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[500px]">
+                <thead>
+                  <tr className="bg-muted text-muted-foreground">
+                    <th className="text-left px-4 py-3 font-medium">Nome</th>
+                    <th className="text-left px-4 py-3 font-medium">UC Geradora</th>
+                    <th className="text-left px-4 py-3 font-medium">Potência</th>
+                    <th className="text-left px-4 py-3 font-medium">Cidade</th>
+                    <th className="text-left px-4 py-3 font-medium">Distribuidora</th>
+                    <th className="text-left px-4 py-3 font-medium">Tipo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtradas.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-12 text-muted-foreground">Nenhuma usina encontrada</td>
+                    </tr>
+                  ) : (
+                    filtradas.map((u, i) => (
+                      <tr
+                        key={u.id}
+                        onClick={() => abrirBeneficiarios(u)}
+                        className={cn('border-t border-border transition-colors hover:bg-muted/50 cursor-pointer', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}
+                      >
+                        <td className="px-4 py-3 font-medium">{u.nome}</td>
+                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.uc_geradora}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{Number(u.potencia_kwp).toFixed(1)} kWp</td>
+                        <td className="px-4 py-3 text-muted-foreground">{u.cidade || '—'}{u.estado ? ` / ${u.estado}` : ''}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{u.distribuidora}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+                            u.tipo === 'propria' ? 'bg-green-500/10 text-green-500' :
+                            u.tipo === 'arrendada' ? 'bg-blue-500/10 text-blue-500' :
+                            'bg-purple-500/10 text-purple-500'
+                          )}>
+                            {u.tipo}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {subTab === 'geracao' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3">
+            <Select value={usinaFiltroGer} onValueChange={v => {
+              setUsinaFiltroGer(v)
+              if (v === 'all') carregarTodasGeracoes()
+              else carregarGeracoes(v)
+            }}>
+              <SelectTrigger className="w-52"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as usinas</SelectItem>
+                {usinas.map(u => (
+                  <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {loadingGeracoes ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : geracoes.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-12 text-center">Nenhuma geração registrada</p>
+          ) : (
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[400px]">
+                <thead>
+                  <tr className="bg-muted text-muted-foreground">
+                    <th className="text-left px-4 py-3 font-medium">Competência</th>
+                    <th className="text-left px-4 py-3 font-medium">kWh gerado</th>
+                    <th className="text-left px-4 py-3 font-medium">Saldo anterior</th>
+                    <th className="text-left px-4 py-3 font-medium">Saldo disponível</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {geracoes.map((g: any, i: number) => (
+                    <tr key={g.id || i} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
+                      <td className="px-4 py-3 text-muted-foreground">{g.competencia?.substring(0, 7) || '—'}</td>
+                      <td className="px-4 py-3 font-medium">{Number(g.energia_gerada_kwh || 0).toFixed(0)} kWh</td>
+                      <td className="px-4 py-3 text-muted-foreground">{Number(g.saldo_anterior || 0).toFixed(0)} kWh</td>
+                      <td className="px-4 py-3 text-muted-foreground">{Number(g.saldo_disponivel || 0).toFixed(0)} kWh</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal nova usina */}
+      <Dialog open={modalNova} onOpenChange={setModalNova}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Nova usina</DialogTitle></DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Nome *</Label>
+              <Input placeholder="Nome da usina" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Potência (kWp) *</Label>
+                <Input type="number" placeholder="50.0" value={form.potencia_kwp} onChange={e => setForm(p => ({ ...p, potencia_kwp: e.target.value }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>UC Geradora *</Label>
+                <Input placeholder="3652109" value={form.uc_geradora} onChange={e => setForm(p => ({ ...p, uc_geradora: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Distribuidora *</Label>
+              <Input placeholder="Energisa MS" value={form.distribuidora} onChange={e => setForm(p => ({ ...p, distribuidora: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="flex flex-col gap-1.5 col-span-2">
+                <Label>Cidade</Label>
+                <Input placeholder="Bataguassu" value={form.cidade} onChange={e => setForm(p => ({ ...p, cidade: e.target.value }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>UF</Label>
+                <Input placeholder="MS" maxLength={2} value={form.estado} onChange={e => setForm(p => ({ ...p, estado: e.target.value.toUpperCase() }))} />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Tipo</Label>
+              <Select value={form.tipo} onValueChange={v => setForm(p => ({ ...p, tipo: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="propria">Própria</SelectItem>
+                  <SelectItem value="arrendada">Arrendada</SelectItem>
+                  <SelectItem value="parceria">Parceria</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {erro && <p className="text-sm text-destructive">{erro}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalNova(false)}>Cancelar</Button>
+            <Button onClick={salvarUsina} disabled={loadingSalvar}>{loadingSalvar ? 'Salvando...' : 'Salvar usina'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal beneficiários */}
+      <Dialog open={modalBenef} onOpenChange={setModalBenef}>
+        <DialogContent className="!max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Beneficiários — {usinaSelecionada?.nome}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-2">
+            {loadingBenef ? (
+              <p className="text-sm text-muted-foreground">Carregando...</p>
+            ) : beneficiarios.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">Nenhum beneficiário cadastrado</p>
+            ) : (
+              <div className="rounded-lg border border-border overflow-x-auto max-h-[60vh]">
+                <table className="w-full text-sm min-w-[500px]">
+                  <thead>
+                    <tr className="bg-muted text-muted-foreground whitespace-nowrap">
+                      <th className="text-left px-4 py-3 font-medium">Cliente</th>
+                      <th className="text-left px-4 py-3 font-medium">UC</th>
+                      <th className="text-left px-4 py-3 font-medium">Rateio</th>
+                      <th className="text-left px-4 py-3 font-medium">Desconto</th>
+                      <th className="text-left px-4 py-3 font-medium">Status</th>
+                      <th className="text-left px-4 py-3 font-medium">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {beneficiarios.map((b: any, i: number) => (
+                      <tr key={b.id} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
+                        <td className="px-4 py-3 font-medium whitespace-nowrap">{b.cliente?.nome || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs whitespace-nowrap">{b.uc_beneficiaria}</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.percentual_rateio).toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{Number(b.desconto_percentual).toFixed(1)}%</td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <Badge variant={b.ativo ? 'default' : 'secondary'}>{b.ativo ? 'Ativo' : 'Inativo'}</Badge>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            onClick={() => removerBeneficiario(b.id)}
+                            disabled={removendoBenef === b.id}
+                            className="p-1.5 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive disabled:opacity-50"
+                            title="Remover beneficiário"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalBenef(false)}>Fechar</Button>
+            <Button onClick={() => { setModalBenef(false); setModalAddBenef(true) }}>Adicionar beneficiário</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal adicionar beneficiário */}
+      <Dialog open={modalAddBenef} onOpenChange={setModalAddBenef}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Adicionar beneficiário — {usinaSelecionada?.nome}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Cliente *</Label>
+              <Select value={formBenef.cliente_id} onValueChange={v => setFormBenef(p => ({ ...p, cliente_id: v }))}>
+                <SelectTrigger><SelectValue placeholder="Selecione o cliente" /></SelectTrigger>
+                <SelectContent>
+                  {clientes.map(c => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>UC Beneficiária *</Label>
+              <Input placeholder="3647072" value={formBenef.uc_beneficiaria} onChange={e => setFormBenef(p => ({ ...p, uc_beneficiaria: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label>Desconto (%)</Label>
+                <Input type="number" min={0} max={100} value={formBenef.desconto_percentual} onChange={e => setFormBenef(p => ({ ...p, desconto_percentual: e.target.value }))} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Dia vencimento</Label>
+                <Input type="number" min={1} max={28} value={formBenef.dia_vencimento} onChange={e => setFormBenef(p => ({ ...p, dia_vencimento: e.target.value }))} />
+              </div>
+            </div>
+            {erroAddBenef && <p className="text-sm text-destructive">{erroAddBenef}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setModalAddBenef(false); setModalBenef(true) }}>Cancelar</Button>
+            <Button onClick={salvarBeneficiario} disabled={loadingAddBenef}>{loadingAddBenef ? 'Salvando...' : 'Adicionar'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}import { useEffect, useState } from 'react'
+import { apiFetch } from '@/hooks/useApi'
+import { Zap, DollarSign, TrendingUp, Users, RefreshCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+
+interface Credito {
+  id: string
+  saldo_atual: number
+  kwh_compensado: number
+  kwh_consumido: number
+  saldo_anterior: number
+  competencia: string
+  beneficiario?: {
+    id: string
+    uc_beneficiaria: string
+    cliente?: { id: string; nome: string }
+  }
+}
+
+function fmtMoeda(v: number) {
+  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function fmtComp(d: string) {
+  if (!d) return '—'
+  const dt = new Date(d + 'T12:00:00')
+  return `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`
+}
+
+export default function CreditosKwh() {
+  const [creditos,     setCreditos]     = useState<Credito[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [tarifa,       setTarifa]       = useState(0.75)
+  const [tarifaInput,  setTarifaInput]  = useState('0.7500')
+  const [recalculando, setRecalculando] = useState(false)
+
+  async function carregar() {
+    const r = await apiFetch<{ data: Credito[] }>('/api/creditos')
+    setCreditos(r.data || [])
+  }
+
+  async function recalcularCreditos() {
+    setRecalculando(true)
+    try {
+      const hoje = new Date()
+      const comp = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
+      await apiFetch('/api/creditos/recalcular', {
+        method: 'POST',
+        body: JSON.stringify({ competencia: comp }),
+      })
+      await carregar()
+    } finally {
+      setRecalculando(false)
+    }
+  }
+
+  useEffect(() => {
+    carregar().finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="text-muted-foreground text-sm p-6">Carregando...</div>
+
+  const totalKwh      = creditos.reduce((a, c) => a + Number(c.saldo_atual || 0), 0)
+  const valorEstimado = totalKwh * tarifa
+  const maiorSaldo    = creditos.reduce((a, c) => Number(c.saldo_atual) > Number(a.saldo_atual) ? c : a, creditos[0] || {} as Credito)
+  const comSaldo      = creditos.filter(c => Number(c.saldo_atual) > 0).length
+  const maxSaldo      = Math.max(...creditos.map(c => Number(c.saldo_atual)), 1)
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Créditos kWh</h1>
+          <p className="text-muted-foreground text-sm mt-1">Saldo de energia acumulado por UC</p>
+        </div>
+        <Button variant="outline" onClick={recalcularCreditos} disabled={recalculando}>
+          <RefreshCw size={16} className={recalculando ? 'animate-spin' : ''} />
+          {recalculando ? 'Recalculando...' : 'Recalcular'}
+        </Button>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          { label: 'Total Acumulado',    valor: `${totalKwh.toLocaleString('pt-BR')} kWh`, sub: 'saldo Energisa dos clientes',            icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  border: 'border-green-500/20' },
+          { label: 'Valor Estimado',     valor: fmtMoeda(valorEstimado),                   sub: `pela tarifa R$ ${tarifa.toFixed(4)}/kWh`, icon: DollarSign, cor: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
+          { label: 'Maior Saldo',        valor: `${Number(maiorSaldo?.saldo_atual || 0).toLocaleString('pt-BR')} kWh`, sub: maiorSaldo?.beneficiario?.cliente?.nome || '—', icon: TrendingUp, cor: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+          { label: 'Clientes com Saldo', valor: comSaldo,                                  sub: 'UCs com crédito > 0',                    icon: Users,      cor: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+        ].map(k => {
+          const Icon = k.icon
+          return (
+            <div key={k.label} className={`rounded-xl border ${k.border} bg-card p-5 flex flex-col gap-3`}>
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${k.bg}`}>
+                <Icon size={18} className={k.cor} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
+                <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">{k.sub}</p>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Simulador */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-sm font-semibold">Simulador de Valor</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Altere a tarifa para simular o valor financeiro dos créditos acumulados em R$</p>
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs text-muted-foreground">Tarifa kWh (R$):</span>
+            <input
+              type="number"
+              step="0.0001"
+              className="w-28 h-8 px-3 rounded-lg border border-border bg-background text-sm font-mono"
+              value={tarifaInput}
+              onChange={e => setTarifaInput(e.target.value)}
+            />
+            <button
+              onClick={() => setTarifa(parseFloat(tarifaInput) || 0)}
+              className="h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+            >
+              Atualizar
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 p-4 rounded-lg bg-muted/50 flex items-center gap-3">
+          <Zap size={16} className="text-green-500" />
+          <span className="text-sm">
+            <span className="font-medium text-green-500">{totalKwh.toLocaleString('pt-BR')} kWh</span>
+            <span className="text-muted-foreground"> × R$ {tarifa.toFixed(4)}/kWh = </span>
+            <span className="font-bold text-yellow-500">{fmtMoeda(valorEstimado)}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* Ranking */}
+      <div className="rounded-xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold">Ranking por Saldo</h2>
+          <span className="text-xs text-muted-foreground">última fatura de cada UC</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border">
+                <th className="text-left pb-3 pr-4 text-xs font-medium w-8">#</th>
+                <th className="text-left pb-3 pr-4 text-xs font-medium">UC</th>
+                <th className="text-left pb-3 pr-4 text-xs font-medium">Cliente</th>
+                <th className="text-left pb-3 pr-4 text-xs font-medium">Compensado</th>
+                <th className="text-left pb-3 pr-8 text-xs font-medium w-64">Saldo</th>
+                <th className="text-left pb-3 pl-4 text-xs font-medium min-w-[100px]">R$</th>
+              </tr>
+            </thead>
+            <tbody>
+              {creditos.map((c, i) => {
+                const saldo = Number(c.saldo_atual || 0)
+                const comp  = Number(c.kwh_compensado || 0)
+                const cons  = Number(c.kwh_consumido || 0)
+                const pct   = maxSaldo > 0 ? (saldo / maxSaldo) * 100 : 0
+                const valor = saldo * tarifa
+
+                return (
+                  <tr key={c.id} className={cn('border-b border-border/50', i % 2 === 0 ? '' : 'bg-muted/10')}>
+                    <td className="py-3 pr-4">
+                      <span className="text-xs text-muted-foreground font-medium">{i + 1}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="font-mono text-xs font-medium text-primary">UC {c.beneficiario?.uc_beneficiaria || '—'}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{fmtComp(c.competencia)}</p>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-sm font-medium">{c.beneficiario?.cliente?.nome || '—'}</p>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="text-xs text-green-500 font-medium">+{comp.toLocaleString('pt-BR')}</span>
+                      {cons > 0 && <span className="text-xs text-red-400 ml-1">/ -{cons.toLocaleString('pt-BR')}</span>}
+                    </td>
+                    <td className="py-3 pr-8">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden flex-shrink-0">
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className={cn('text-xs font-bold whitespace-nowrap ml-2', saldo > 0 ? 'text-green-500' : 'text-muted-foreground')}>
+                          {saldo.toLocaleString('pt-BR')} kWh
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-3 pl-4 whitespace-nowrap min-w-[100px]">
+                      <span className="text-sm font-semibold text-yellow-500">{fmtMoeda(valor)}</span>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}import { useEffect, useState } from 'react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Search, RefreshCw } from 'lucide-react'
+import { apiFetch } from '@/hooks/useApi'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+interface Log {
+  id: string
+  acao: string
+  descricao: string
+  cliente_nome: string
+  usina_nome: string
+  created_at: string
+}
+
+const acaoMeta: Record<string, { label: string; cor: string; icone: string }> = {
+  CLIENTE_CRIADO:          { label: 'Cliente criado',          cor: '#52b788', icone: '👤' },
+  CLIENTE_EDITADO:         { label: 'Cliente editado',         cor: '#60a5fa', icone: '✏️' },
+  CLIENTE_EXCLUIDO:        { label: 'Cliente excluído',        cor: '#f87171', icone: '🗑️' },
+  BENEFICIARIO_ADICIONADO: { label: 'Beneficiário adicionado', cor: '#52b788', icone: '🔗' },
+  BENEFICIARIO_REMOVIDO:   { label: 'Beneficiário removido',   cor: '#f87171', icone: '🔗' },
+  FATURA_PAGA:             { label: 'Fatura paga',             cor: '#52b788', icone: '💰' },
+  PDF_PROCESSADO:          { label: 'PDF processado',          cor: '#fbbf24', icone: '📄' },
+  PIX_EXTRAIDO:            { label: 'PIX extraído',            cor: '#fbbf24', icone: '⚡' },
+}
+
+function fmtHora(d: string) {
+  return new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtDia(d: string) {
+  const data = new Date(d)
+  const hoje = new Date(); hoje.setHours(0,0,0,0)
+  const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
+  const dia = new Date(data); dia.setHours(0,0,0,0)
+  if (dia.getTime() === hoje.getTime()) return 'Hoje'
+  if (dia.getTime() === ontem.getTime()) return 'Ontem'
+  return data.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+}
+
+const LIMIT = 30
+
+export default function Logs() {
+  const [logs, setLogs] = useState<Log[]>([])
+  const [busca, setBusca] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadingMais, setLoadingMais] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [filtroUsina, setFiltroUsina] = useState('')
+  const [filtroAcao, setFiltroAcao] = useState('')
+  const [filtroDias, setFiltroDias] = useState('30')
+  const [usinas, setUsinas] = useState<{ id: string; nome: string }[]>([])
+
+  async function carregar(reset = true) {
+  if (reset) setLoading(true)
+  else setLoadingMais(true)
+
+  const off = reset ? 0 : offset
+  const params = new URLSearchParams()
+  params.set('limit', String(LIMIT))
+  params.set('offset', String(off))
+  if (filtroUsina && filtroUsina !== 'all') params.set('usina_id', filtroUsina)
+  if (filtroAcao && filtroAcao !== 'all') params.set('acao', filtroAcao)
+  if (filtroDias && filtroDias !== 'all') params.set('dias', filtroDias)
+
+  const r = await apiFetch<{ data: Log[]; total: number }>(`/api/logs?${params.toString()}`)
+
+  if (reset) setLogs(r.data || [])
+  else setLogs(prev => [...prev, ...(r.data || [])])
+
+  setTotal(r.total || 0)
+  setOffset(off + (r.data?.length || 0))
+  setLoading(false)
+  setLoadingMais(false)
+}
+
+  useEffect(() => {
+  apiFetch<{ data: { id: string; nome: string }[] }>('/api/usinas')
+    .then(r => setUsinas(r.data || []))
+}, [])
+
+useEffect(() => {
+  setOffset(0)
+  carregar(true)
+}, [filtroUsina, filtroAcao, filtroDias])
+
+  const filtrados = logs.filter(l =>
+    l.descricao?.toLowerCase().includes(busca.toLowerCase()) ||
+    l.cliente_nome?.toLowerCase().includes(busca.toLowerCase()) ||
+    l.acao?.toLowerCase().includes(busca.toLowerCase())
+  )
+
+  // Agrupa por data
+  const grupos: Record<string, { label: string; logs: Log[] }> = {}
+  filtrados.forEach(l => {
+    const key = new Date(l.created_at).toISOString().substring(0, 10)
+    if (!grupos[key]) grupos[key] = { label: fmtDia(l.created_at), logs: [] }
+    grupos[key].logs.push(l)
+  })
+
+  const temMais = offset < total
+
+  return (
+    <div className="flex flex-col gap-6">
+      
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Logs</h1>
+          <p className="text-muted-foreground text-sm mt-1">{total} eventos registrados</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Select value={filtroUsina} onValueChange={setFiltroUsina}>
+            <SelectTrigger className="w-40 h-8 text-xs"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as usinas</SelectItem>
+              {usinas.map(u => (
+                <SelectItem key={u.id} value={u.id}>{u.nome}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroAcao} onValueChange={setFiltroAcao}>
+            <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Todas as ações" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as ações</SelectItem>
+              <SelectItem value="CLIENTE_CRIADO">Cliente criado</SelectItem>
+              <SelectItem value="CLIENTE_EDITADO">Cliente editado</SelectItem>
+              <SelectItem value="CLIENTE_EXCLUIDO">Cliente excluído</SelectItem>
+              <SelectItem value="CLIENTE_DESATIVADO">Cliente desativado</SelectItem>
+              <SelectItem value="BENEFICIARIO_ADICIONADO">Beneficiário adicionado</SelectItem>
+              <SelectItem value="BENEFICIARIO_REMOVIDO">Beneficiário removido</SelectItem>
+              <SelectItem value="FATURA_PAGA">Fatura paga</SelectItem>
+              <SelectItem value="PDF_PROCESSADO">PDF processado</SelectItem>
+              <SelectItem value="PIX_EXTRAIDO">PIX extraído</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroDias} onValueChange={setFiltroDias}>
+            <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Últimos 7 dias</SelectItem>
+              <SelectItem value="30">Últimos 30 dias</SelectItem>
+              <SelectItem value="90">Últimos 90 dias</SelectItem>
+              <SelectItem value="all">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" size="sm" onClick={() => carregar(true)} disabled={loading}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="relative">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Buscar por ação, cliente ou descrição..."
+          className="pl-9"
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <div className="text-muted-foreground text-sm">Carregando...</div>
+      ) : (
+        <div className="flex flex-col gap-6">
+          {Object.entries(grupos)
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([key, grupo]) => (
+              <div key={key}>
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                    {grupo.label}
+                  </span>
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs text-muted-foreground">{grupo.logs.length} evento{grupo.logs.length !== 1 ? 's' : ''}</span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  {grupo.logs.map(l => {
+                    const meta = acaoMeta[l.acao] || { label: l.acao, cor: '#888', icone: '📋' }
+                    return (
+                      <div
+                        key={l.id}
+                        className="flex items-stretch gap-0 rounded-lg border border-border bg-card overflow-hidden"
+                      >
+                        <div className="w-1 flex-shrink-0" style={{ background: meta.cor }} />
+                        <div className="w-11 flex items-center justify-center text-base flex-shrink-0 border-r border-border bg-muted/30">
+                          {meta.icone}
+                        </div>
+                        <div className="flex-1 px-4 py-3 min-w-0">
+                          <p className="text-sm font-medium text-foreground leading-snug">{l.descricao}</p>
+                          {l.cliente_nome && (
+                            <p className="text-xs text-muted-foreground mt-1">{l.cliente_nome}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end justify-center px-4 py-3 gap-1 flex-shrink-0">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: meta.cor + '20', color: meta.cor }}>
+                            {meta.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground font-mono">{fmtHora(l.created_at)}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+          {temMais && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" onClick={() => carregar(false)} disabled={loadingMais}>
+                {loadingMais ? 'Carregando...' : `Carregar mais (${total - offset} restantes)`}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}import { useEffect, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { RefreshCw, Wifi, WifiOff, Play, MessageSquare, Settings, RotateCcw } from 'lucide-react'
+import { apiFetch } from '@/hooks/useApi'
+import { cn } from '@/lib/utils'
+
+interface Status {
+  configurado: boolean
+  status: 'conectado' | 'desconectado' | 'nao_configurado' | 'erro'
+  mensagem: string
+  instancia?: string
+}
+
+interface Evento {
+  id: string
+  tipo: string
+  descricao: string
+  created_at: string
+}
+
+interface ConfigMsg {
+  chave: string
+  descricao: string
+  valor: string
+  personalizado: boolean
+}
+
+type Aba = 'status' | 'historico' | 'config'
+
+export default function Bot() {
+  const [aba, setAba] = useState<Aba>('status')
+  const [status,        setStatus]        = useState<Status | null>(null)
+  const [eventos,       setEventos]       = useState<Evento[]>([])
+  const [configs,       setConfigs]       = useState<ConfigMsg[]>([])
+  const [loadingStatus, setLoadingStatus] = useState(true)
+  const [loadingTestar, setLoadingTestar] = useState(false)
+  const [loadingConfig, setLoadingConfig] = useState(false)
+  const [mensagem,      setMensagem]      = useState('')
+  const [editando,      setEditando]      = useState<string | null>(null)
+  const [valorEditado,  setValorEditado]  = useState('')
+  const [salvando,      setSalvando]      = useState(false)
+
+  async function carregarStatus() {
+    setLoadingStatus(true)
+    try {
+      const r = await apiFetch<Status>('/api/regua/status')
+      setStatus(r)
+    } finally {
+      setLoadingStatus(false)
+    }
+  }
+
+  async function carregarEventos() {
+    const r = await apiFetch<{ data: Evento[] }>('/api/regua/historico')
+    setEventos(r.data || [])
+  }
+
+  async function carregarConfig() {
+    setLoadingConfig(true)
+    try {
+      const r = await apiFetch<{ data: ConfigMsg[] }>('/api/regua/config')
+      setConfigs(r.data || [])
+    } finally {
+      setLoadingConfig(false)
+    }
+  }
+
+  async function testarRegua() {
+    setLoadingTestar(true)
+    setMensagem('')
+    try {
+      const r = await apiFetch<{ sucesso: boolean; mensagem: string }>('/api/regua/testar', { method: 'POST' })
+      setMensagem(r.mensagem || 'Régua processada com sucesso')
+      carregarEventos()
+    } catch {
+      setMensagem('Erro ao processar régua')
+    } finally {
+      setLoadingTestar(false)
+    }
+  }
+
+  async function salvarConfig(chave: string) {
+    setSalvando(true)
+    try {
+      await apiFetch(`/api/regua/config/${chave}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ valor: valorEditado }),
+      })
+      setEditando(null)
+      await carregarConfig()
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function restaurarConfig(chave: string) {
+    await apiFetch(`/api/regua/config/${chave}`, { method: 'DELETE' })
+    await carregarConfig()
+  }
+
+  useEffect(() => {
+    carregarStatus()
+    carregarEventos()
+    carregarConfig()
+  }, [])
+
+  const isConectado = status?.status === 'conectado'
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Bot WhatsApp</h1>
+          <p className="text-muted-foreground text-sm mt-1">Régua de cobrança automática</p>
+        </div>
+        <Button variant="outline" onClick={() => { carregarStatus(); carregarEventos() }} disabled={loadingStatus}>
+          <RefreshCw size={16} className={loadingStatus ? 'animate-spin' : ''} />
+          Atualizar
+        </Button>
+      </div>
+
+      {/* Card de status */}
+      <div className={cn(
+        'rounded-xl border p-5 flex items-center justify-between',
+        isConectado ? 'border-green-500/20 bg-green-500/5' : 'border-border bg-card'
+      )}>
+        <div className="flex items-center gap-4">
+          <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center', isConectado ? 'bg-green-500/10' : 'bg-muted')}>
+            {isConectado
+              ? <Wifi size={22} className="text-green-500" />
+              : <WifiOff size={22} className="text-muted-foreground" />
+            }
+          </div>
+          <div>
+            <p className="font-medium">{isConectado ? 'WhatsApp Conectado' : 'WhatsApp Desconectado'}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{status?.mensagem}</p>
+            {status?.instancia && <p className="text-xs text-muted-foreground mt-0.5">Instância: <span className="font-mono">{status.instancia}</span></p>}
+          </div>
+        </div>
+        <div className={cn(
+          'inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium',
+          isConectado ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+        )}>
+          <div className={cn('w-2 h-2 rounded-full', isConectado ? 'bg-green-500 animate-pulse' : 'bg-red-500')} />
+          {isConectado ? 'Online' : 'Offline'}
+        </div>
+      </div>
+
+      {/* Card disparar régua */}
+      <div className="rounded-xl border border-border bg-card p-5 flex items-center justify-between">
+        <div>
+          <p className="font-medium">Disparar régua manualmente</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Processa todas as faturas pendentes e envia notificações via WhatsApp</p>
+          {mensagem && (
+            <p className={cn('text-xs mt-2', mensagem.includes('Erro') ? 'text-destructive' : 'text-green-500')}>{mensagem}</p>
+          )}
+        </div>
+        <Button onClick={testarRegua} disabled={loadingTestar}>
+          <Play size={16} />
+          {loadingTestar ? 'Processando...' : 'Disparar agora'}
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+        {[
+          { label: 'Histórico', value: 'historico', icon: MessageSquare },
+          { label: 'Mensagens', value: 'config',    icon: Settings },
+        ].map((t, i) => {
+          const Icon = t.icon
+          return (
+            <button
+              key={t.value}
+              onClick={() => setAba(t.value as Aba)}
+              className={cn(
+                'px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2',
+                i > 0 && 'border-l border-border',
+                aba === t.value ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Icon size={14} />
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Histórico */}
+      {aba === 'historico' && (
+        <div className="flex flex-col gap-4">
+          {eventos.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Nenhum evento registrado</p>
+          ) : (() => {
+            // Agrupa por dia
+            const porDia: Record<string, Evento[]> = {}
+            eventos.forEach(e => {
+              const dia = new Date(e.created_at).toLocaleDateString('pt-BR')
+              if (!porDia[dia]) porDia[dia] = []
+              porDia[dia].push(e)
+            })
+            return Object.entries(porDia).map(([dia, evs]) => (
+              <div key={dia} className="flex flex-col gap-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest px-1">{dia}</p>
+                {evs.map(e => {
+                  const dados = (e as any).dados || {}
+                  const enviado = dados.whatsapp_enviado
+                  const cliente = dados.cliente
+                  const valor = dados.valor
+                  return (
+                    <div key={e.id} className={cn(
+                      'rounded-lg border bg-card px-4 py-3 flex items-center gap-3',
+                      enviado === true ? 'border-green-500/20' : enviado === false ? 'border-red-500/20' : 'border-border'
+                    )}>
+                      <div className={cn(
+                        'w-2 h-2 rounded-full flex-shrink-0',
+                        enviado === true ? 'bg-green-500' : enviado === false ? 'bg-red-500' : 'bg-muted-foreground'
+                      )} />
+                      <div className="flex-1 min-w-0">
+                        {cliente && <p className="text-sm font-medium">{cliente}</p>}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {e.tipo}
+                          {valor ? ` · R$ ${Number(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ''}
+                          {dados.telefone ? ` · ${dados.telefone}` : ''}
+                        </p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className={cn('text-xs font-medium', enviado === true ? 'text-green-500' : enviado === false ? 'text-red-500' : 'text-muted-foreground')}>
+                          {enviado === true ? '✓ Enviado' : enviado === false ? '✗ Não enviado' : e.tipo}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {new Date(e.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ))
+          })()}
+        </div>
+      )}
+
+      {/* Config mensagens */}
+      {aba === 'config' && (
+        <div className="flex flex-col gap-3">
+          {loadingConfig ? (
+            <p className="text-sm text-muted-foreground">Carregando...</p>
+          ) : configs.map(c => (
+            <div key={c.chave} className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{c.descricao}</p>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{c.chave}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {c.personalizado && (
+                    <span className="text-xs text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full">Personalizado</span>
+                  )}
+                  {c.personalizado && (
+                    <button onClick={() => restaurarConfig(c.chave)} className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground" title="Restaurar padrão">
+                      <RotateCcw size={13} />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => { setEditando(c.chave); setValorEditado(c.valor) }}
+                    className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                    title="Editar mensagem"
+                  >
+                    <Settings size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {editando === c.chave ? (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono resize-none"
+                    rows={4}
+                    value={valorEditado}
+                    onChange={e => setValorEditado(e.target.value)}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" size="sm" onClick={() => setEditando(null)}>Cancelar</Button>
+                    <Button size="sm" onClick={() => salvarConfig(c.chave)} disabled={salvando}>
+                      {salvando ? 'Salvando...' : 'Salvar'}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2 font-mono whitespace-pre-wrap">{c.valor}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}import { useState, useRef } from 'react'
+import { Button } from '@/components/ui/button'
+import { Upload, FileText, CheckCircle, XCircle, Loader, Sun } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+interface ResultadoFatura {
+  arquivo: string
+  sucesso: boolean
+  mensagem: string
+  cliente?: string
+  uc?: string
+  valor_final?: number
+  competencia?: string
+}
+
+interface PreviewDemonstrativo {
+  usina_id: string
+  usina_nome: string
+  dados_extraidos: {
+    uc_geradora: string
+    competencia: string
+    kwh_injetado: number
+    saldo_anterior: number
+    saldo_disponivel: number
+    beneficiarios: { uc: string; percentual: number; kwh_transferido: number }[]
+  }
+}
+
+type Aba = 'cliente' | 'usina'
+
+export default function UploadFaturas() {
+  const [aba, setAba] = useState<Aba>('cliente')
+  const [subAba, setSubAba] = useState<'pdf' | 'manual'>('pdf')
+
+  const [arquivos, setArquivos] = useState<File[]>([])
+  const [resultados, setResultados] = useState<ResultadoFatura[]>([])
+  const [processando, setProcessando] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const [formManual, setFormManual] = useState({
+    uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '',
+    kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: ''
+  })
+  const [loadingManual, setLoadingManual] = useState(false)
+  const [resultadoManual, setResultadoManual] = useState<{ sucesso: boolean; mensagem: string } | null>(null)
+  const [erroManual, setErroManual] = useState('')
+
+  const [dragOverUsina, setDragOverUsina] = useState(false)
+  const [loadingUsina, setLoadingUsina] = useState(false)
+  const [preview, setPreview] = useState<PreviewDemonstrativo | null>(null)
+  const [resultadoUsina, setResultadoUsina] = useState<{ sucesso: boolean; mensagem: string } | null>(null)
+  const inputUsinaRef = useRef<HTMLInputElement>(null)
+  const [erroUsina, setErroUsina] = useState('')
+
+  function selecionarArquivos(files: FileList | null) {
+    if (!files) return
+    const pdfs = Array.from(files).filter(f => f.type === 'application/pdf')
+    setArquivos(prev => {
+      const nomes = new Set(prev.map(f => f.name))
+      return [...prev, ...pdfs.filter(f => !nomes.has(f.name))]
+    })
+  }
+
+  function removerArquivo(nome: string) {
+    setArquivos(prev => prev.filter(f => f.name !== nome))
+  }
+
+  async function processarPDFs() {
+    if (arquivos.length === 0) return
+    setProcessando(true)
+    setResultados([])
+    const token = localStorage.getItem('token')
+    const novosResultados: ResultadoFatura[] = []
+    for (const arquivo of arquivos) {
+      const formData = new FormData()
+      formData.append('pdf', arquivo)
+      try {
+        const res = await fetch('/api/faturas/processar-pdf', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        })
+        const data = await res.json()
+        novosResultados.push({
+          arquivo: arquivo.name,
+          sucesso: res.ok && data.sucesso,
+          mensagem: data.erro || data.mensagem || (res.ok ? 'Processado com sucesso' : 'Erro desconhecido'),
+          cliente: data.cliente,
+          uc: data.uc,
+          valor_final: data.valor_final,
+          competencia: data.competencia,
+        })
+      } catch {
+        novosResultados.push({ arquivo: arquivo.name, sucesso: false, mensagem: 'Erro ao enviar arquivo' })
+      }
+      setResultados([...novosResultados])
+    }
+    setProcessando(false)
+  }
+
+  async function enviarManual() {
+    if (!formManual.uc || !formManual.competencia || !formManual.kwh_compensado || !formManual.tarifa_kwh) {
+      setErroManual('UC, competência, kWh e tarifa são obrigatórios')
+      return
+    }
+    setErroManual('')
+    setLoadingManual(true)
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/faturas/manual', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uc: formManual.uc,
+          competencia: formManual.competencia,
+          kwh_compensado: Number(formManual.kwh_compensado),
+          tarifa_kwh: Number(formManual.tarifa_kwh),
+          kwh_consumo_energisa: Number(formManual.kwh_consumo_energisa) || 0,
+          cip: Number(formManual.cip) || 0,
+          outros: Number(formManual.outros) || 0,
+          total_fatura_energisa: Number(formManual.total_fatura_energisa) || 0,
+          saldo_credito: Number(formManual.saldo_credito) || 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroManual(data.erro || 'Erro ao salvar fatura')
+        return
+      }
+      setResultadoManual({ sucesso: true, mensagem: data.mensagem || 'Fatura gerada com sucesso' })
+      setFormManual({ uc: '', competencia: '', kwh_compensado: '', tarifa_kwh: '', kwh_consumo_energisa: '', cip: '', outros: '', total_fatura_energisa: '', saldo_credito: '' })
+    } catch {
+      setErroManual('Erro ao conectar com o servidor')
+    } finally {
+      setLoadingManual(false)
+    }
+  }
+
+  async function enviarDemonstrativo(file: File) {
+    setLoadingUsina(true)
+    setErroUsina('')
+    setPreview(null)
+    setResultadoUsina(null)
+    const token = localStorage.getItem('token')
+    const formData = new FormData()
+    formData.append('pdf', file)
+    try {
+      const res = await fetch('/api/upload/demonstrativo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroUsina(data.erro || 'Erro ao ler PDF')
+        return
+      }
+      setPreview(data)
+    } catch {
+      setErroUsina('Erro ao enviar arquivo')
+    } finally {
+      setLoadingUsina(false)
+    }
+  }
+
+  async function processarDemonstrativo() {
+    if (!preview) return
+    setErroUsina('')
+    const token = localStorage.getItem('token')
+    try {
+      const res = await fetch('/api/upload/processar-demonstrativo', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          usina_id: preview.usina_id,
+          dados_extraidos: preview.dados_extraidos,
+          tarifa_kwh: 0,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.sucesso) {
+        setErroUsina(data.erro || 'Erro ao processar demonstrativo')
+        return
+      }
+      setResultadoUsina({ sucesso: true, mensagem: data.mensagem || 'Demonstrativo processado com sucesso' })
+      setPreview(null)
+    } catch {
+      setErroUsina('Erro ao processar demonstrativo')
+    }
+  }
+
+  const sucessos = resultados.filter(r => r.sucesso).length
+  const erros    = resultados.filter(r => !r.sucesso).length
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Upload de PDFs</h1>
+        <p className="text-muted-foreground text-sm mt-1">Processa PDFs da Energisa MS automaticamente</p>
+      </div>
+
+      <div className="flex gap-2 border-b border-border">
+        <button
+          onClick={() => setAba('cliente')}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'cliente' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+        >
+          Fatura do cliente
+        </button>
+        <button
+          onClick={() => setAba('usina')}
+          className={cn('px-4 py-2 text-sm font-medium border-b-2 transition-colors',
+            aba === 'usina' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground')}
+        >
+          Demonstrativo da usina
+        </button>
+      </div>
+
+      {aba === 'cliente' && (
+        <>
+          <div className="flex gap-0 border border-border rounded-lg overflow-hidden w-fit">
+            <button
+              onClick={() => setSubAba('pdf')}
+              className={cn('px-4 py-2 text-sm font-medium transition-colors',
+                subAba === 'pdf' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              PDF automático
+            </button>
+            <button
+              onClick={() => setSubAba('manual')}
+              className={cn('px-4 py-2 text-sm font-medium border-l border-border transition-colors',
+                subAba === 'manual' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground')}
+            >
+              Entrada manual
+            </button>
+          </div>
+
+          {subAba === 'pdf' && (
+            <>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={e => { e.preventDefault(); setDragOver(false); selecionarArquivos(e.dataTransfer.files) }}
+                onClick={() => inputRef.current?.click()}
+                className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                  dragOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
+              >
+                <Upload size={32} className="text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Arraste os PDFs aqui</p>
+                  <p className="text-sm text-muted-foreground mt-1">Faturas Energisa dos clientes — múltiplos arquivos</p>
+                </div>
+                <input ref={inputRef} type="file" accept=".pdf" multiple className="hidden" onChange={e => selecionarArquivos(e.target.files)} />
+              </div>
+
+              {arquivos.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{arquivos.length} arquivo{arquivos.length !== 1 ? 's' : ''} selecionado{arquivos.length !== 1 ? 's' : ''}</p>
+                    <Button onClick={processarPDFs} disabled={processando}>
+                      {processando ? <><Loader size={16} className="animate-spin" />Processando...</> : <><FileText size={16} />Processar {arquivos.length} PDF{arquivos.length !== 1 ? 's' : ''}</>}
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {arquivos.map(f => {
+                      const resultado = resultados.find(r => r.arquivo === f.name)
+                      return (
+                        <div key={f.name} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-card">
+                          {resultado ? (
+                            resultado.sucesso ? <CheckCircle size={18} className="text-green-500 flex-shrink-0" /> : <XCircle size={18} className="text-destructive flex-shrink-0" />
+                          ) : processando ? (
+                            <Loader size={18} className="animate-spin text-muted-foreground flex-shrink-0" />
+                          ) : (
+                            <FileText size={18} className="text-muted-foreground flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{f.name}</p>
+                            {resultado && (
+                              <p className={cn('text-xs mt-0.5', resultado.sucesso ? 'text-green-500' : 'text-destructive')}>
+                                {resultado.sucesso
+                                  ? `${resultado.cliente} — UC ${resultado.uc} — R$ ${Number(resultado.valor_final).toFixed(2).replace('.', ',')} — ${resultado.competencia}`
+                                  : resultado.mensagem}
+                              </p>
+                            )}
+                          </div>
+                          {!processando && !resultado && (
+                            <button onClick={e => { e.stopPropagation(); removerArquivo(f.name) }} className="text-muted-foreground hover:text-destructive transition-colors">
+                              <XCircle size={16} />
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {resultados.length > 0 && !processando && (
+                <div className="flex items-center gap-4 p-4 rounded-lg border border-border bg-card">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle size={16} className="text-green-500" />
+                    <span className="text-sm"><span className="font-medium">{sucessos}</span> processado{sucessos !== 1 ? 's' : ''}</span>
+                  </div>
+                  {erros > 0 && (
+                    <div className="flex items-center gap-2">
+                      <XCircle size={16} className="text-destructive" />
+                      <span className="text-sm"><span className="font-medium">{erros}</span> erro{erros !== 1 ? 's' : ''}</span>
+                    </div>
+                  )}
+                  <Button variant="outline" className="ml-auto" onClick={() => { setArquivos([]); setResultados([]) }}>Limpar</Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {subAba === 'manual' && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">
+                Use quando o PDF não for lido corretamente. Os valores devem ser retirados diretamente da fatura impressa da Energisa.
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">UC do cliente *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 3647072" value={formManual.uc} onChange={e => setFormManual(p => ({ ...p, uc: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Competência *</label>
+                  <input className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="MM/AAAA" value={formManual.competencia} onChange={e => setFormManual(p => ({ ...p, competencia: e.target.value }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">kWh compensados (GDII) *</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 2520" value={formManual.kwh_compensado} onChange={e => setFormManual(p => ({ ...p, kwh_compensado: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Tarifa kWh (Energisa) *</label>
+                  <input type="number" step="0.000001" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm font-mono" placeholder="ex: 1.092920" value={formManual.tarifa_kwh} onChange={e => setFormManual(p => ({ ...p, tarifa_kwh: e.target.value }))} />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground border-t border-border pt-4">Informativos (opcional)</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Consumo Energisa (kWh)</label>
+                  <input type="number" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 4349" value={formManual.kwh_consumo_energisa} onChange={e => setFormManual(p => ({ ...p, kwh_consumo_energisa: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">CIP Municipal (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 302.22" value={formManual.cip} onChange={e => setFormManual(p => ({ ...p, cip: e.target.value }))} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-sm font-medium">Multa/Juros (R$)</label>
+                  <input type="number" step="0.01" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" placeholder="ex: 88.62" value={formManual.outros} onChange={e => setFormManual(p => ({ ...p, outros: e.target.value }))} />
+                </div>
+              </div>
+              {erroManual && <p className="text-sm text-destructive">{erroManual}</p>}
+              {resultadoManual && (
+                <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+                  <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
+                  <p className="text-sm text-green-500">{resultadoManual.mensagem}</p>
+                  <Button variant="outline" className="ml-auto" onClick={() => setResultadoManual(null)}>Nova entrada</Button>
+                </div>
+              )}
+              <Button onClick={enviarManual} disabled={loadingManual} className="w-fit">
+                {loadingManual ? <><Loader size={16} className="animate-spin" />Salvando...</> : 'Gerar fatura manualmente'}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {aba === 'usina' && (
+        <>
+          {!preview && !resultadoUsina && (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOverUsina(true) }}
+              onDragLeave={() => setDragOverUsina(false)}
+              onDrop={e => {
+                e.preventDefault(); setDragOverUsina(false)
+                const file = e.dataTransfer.files[0]
+                if (file?.type === 'application/pdf') { enviarDemonstrativo(file) }
+              }}
+              onClick={() => inputUsinaRef.current?.click()}
+              className={cn('border-2 border-dashed rounded-lg p-12 flex flex-col items-center justify-center gap-3 cursor-pointer transition-colors',
+                dragOverUsina ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/30')}
+            >
+              <Sun size={32} className="text-muted-foreground" />
+              <div className="text-center">
+                <p className="font-medium">Arraste o PDF do demonstrativo</p>
+                <p className="text-sm text-muted-foreground mt-1">Demonstrativo de compensação da usina — 1 arquivo</p>
+              </div>
+              <input ref={inputUsinaRef} type="file" accept=".pdf" className="hidden" onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) { enviarDemonstrativo(file) }
+              }} />
+            </div>
+          )}
+
+          {loadingUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-border bg-card">
+              <Loader size={18} className="animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Lendo PDF do demonstrativo...</p>
+            </div>
+          )}
+
+          {erroUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-destructive/30 bg-destructive/5">
+              <XCircle size={18} className="text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive">{erroUsina}</p>
+              <Button variant="outline" className="ml-auto" onClick={() => setErroUsina('')}>Tentar novamente</Button>
+            </div>
+          )}
+
+          {preview && (
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={18} className="text-green-500" />
+                  <p className="font-medium text-sm">PDF lido com sucesso — confirme os dados</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground text-xs">Usina</p>
+                    <p className="font-medium">{preview.usina_nome}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Competência</p>
+                    <p className="font-medium">{preview.dados_extraidos.competencia}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">kWh injetado</p>
+                    <p className="font-medium">{preview.dados_extraidos.kwh_injetado} kWh</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Saldo disponível</p>
+                    <p className="font-medium">{preview.dados_extraidos.saldo_disponivel} kWh</p>
+                  </div>
+                </div>
+              </div>
+
+              {preview.dados_extraidos.beneficiarios?.length > 0 && (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted text-muted-foreground">
+                        <th className="text-left px-4 py-3 font-medium">UC</th>
+                        <th className="text-left px-4 py-3 font-medium">kWh transferido</th>
+                        <th className="text-left px-4 py-3 font-medium">Percentual</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.dados_extraidos.beneficiarios.map((b, i) => (
+                        <tr key={b.uc} className={cn('border-t border-border', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}>
+                          <td className="px-4 py-2 font-mono text-xs">{b.uc}</td>
+                          <td className="px-4 py-2 text-muted-foreground">{b.kwh_transferido} kWh</td>
+                          <td className="px-4 py-2 text-muted-foreground">{b.percentual}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {erroUsina && <p className="text-sm text-destructive">{erroUsina}</p>}
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => { setPreview(null); setErroUsina('') }}>Cancelar</Button>
+                <Button onClick={processarDemonstrativo}>Confirmar e salvar</Button>
+              </div>
+            </div>
+          )}
+
+          {resultadoUsina && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-green-500/30 bg-green-500/5">
+              <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
+              <p className="text-sm text-green-500">{resultadoUsina.mensagem}</p>
+              <Button variant="outline" className="ml-auto" onClick={() => setResultadoUsina(null)}>Processar outro</Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}

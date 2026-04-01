@@ -290,11 +290,11 @@ export default function Faturas() {
   const atrasadas = faturas.filter(f => f.status === 'atrasada').length
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Faturas</h1>
-          <p className="text-muted-foreground text-sm mt-1">Cobranças geradas por usina e beneficiário</p>
+          <h1 className="text-xl font-bold" style={{color:"var(--hc-text1)"}}>Faturas</h1>
+          <p className="text-xs mt-0.5" style={{color:"var(--hc-text3)"}}>Cobranças geradas por usina e beneficiário</p>
         </div>
         <Button variant="outline" onClick={() => setModalRelatorio(true)}>
           <Download size={16} />
@@ -304,7 +304,7 @@ export default function Faturas() {
 
       {/* Filtros */}
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="text-xs text-muted-foreground">Filtrar por</span>
+        <span className="text-xs font-semibold tracking-widest" style={{color:"var(--hc-text3)"}}>FILTRAR POR</span>
         <Select value={filtroMes} onValueChange={setFiltroMes}>
           <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="Todos os meses" /></SelectTrigger>
           <SelectContent>
@@ -335,33 +335,33 @@ export default function Faturas() {
         </Select>
         <span className="text-xs text-muted-foreground">{gruposFiltrados.reduce((a, g) => a + g.faturas.length, 0)} faturas</span>
         {(filtroMes !== 'all' || filtroAno !== 'all' || filtroStatus !== 'todos' || busca) && (
-          <button onClick={() => { setFiltroMes('all'); setFiltroAno('all'); setFiltroStatus('todos'); setBusca('') }} className="text-xs text-muted-foreground hover:text-foreground">✕ Limpar</button>
+          <button onClick={() => { setFiltroMes('all'); setFiltroAno('all'); setFiltroStatus('todos'); setBusca('') }} className="text-xs" style={{color:"var(--hc-text3)"}}>✕ Limpar</button>
         )}
       </div>
 
       {/* Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total',     valor: total,     cor: 'text-foreground',  bg: 'bg-muted/50',      border: 'border-border' },
-          { label: 'Pendentes', valor: pendentes, cor: 'text-yellow-500',  bg: 'bg-yellow-500/5',  border: 'border-yellow-500/20' },
-          { label: 'Pagas',     valor: pagas,     cor: 'text-green-500',   bg: 'bg-green-500/5',   border: 'border-green-500/20' },
-          { label: 'Atrasadas', valor: atrasadas, cor: 'text-red-500',     bg: 'bg-red-500/5',     border: 'border-red-500/20' },
+          { label: 'Total',     valor: total,     cor: '#e2e3df', border: 'rgba(255,255,255,0.06)' },
+          { label: 'Pendentes', valor: pendentes, cor: '#fbbf24',  border: 'rgba(251,191,36,0.2)' },
+          { label: 'Pagas',     valor: pagas,     cor: '#50c878',  border: 'rgba(80,200,120,0.2)' },
+          { label: 'Atrasadas', valor: atrasadas, cor: '#f87171',  border: 'rgba(248,113,113,0.2)' },
         ].map(card => (
-          <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-4`}>
-            <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{card.label}</p>
-            <p className={cn('text-2xl sm:text-3xl font-bold', card.cor)}>{card.valor}</p>
+          <div key={card.label} className="rounded-xl p-4" style={{border:`1px solid ${card.border}`,background:'rgba(255,255,255,0.02)'}}>
+            <p className="text-[9px] uppercase tracking-widest font-semibold mb-2" style={{color:'#5a6a5a'}}>{card.label}</p>
+            <p className="text-2xl sm:text-3xl font-bold" style={{color:card.cor}}>{card.valor}</p>
           </div>
         ))}
       </div>
 
       {/* Busca */}
       <div className="relative">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{color:"var(--hc-text3)"}} />
         <Input placeholder="Buscar por cliente ou UC..." className="pl-9" value={busca} onChange={e => setBusca(e.target.value)} />
       </div>
 
       {loading ? (
-        <div className="text-muted-foreground text-sm">Carregando...</div>
+        <div className="text-xs" style={{color:"var(--hc-text3)"}}>Carregando...</div>
       ) : (
         <div className="flex flex-col gap-3">
           {gruposFiltrados.map(g => {
@@ -373,54 +373,54 @@ export default function Faturas() {
             const nPend    = g.faturas.filter(f => f.status === 'pendente' || f.status === 'atrasada').length
 
             return (
-              <div key={gId} className="rounded-xl border border-border bg-card overflow-hidden">
+              <div key={gId} className="rounded-xl overflow-hidden" style={{background:"var(--hc-surface)",border:"1px solid var(--hc-border)"}}>
                 {/* Header grupo */}
-                <div className="flex items-center justify-between px-5 py-4 cursor-pointer hover:bg-muted/30 transition-colors" onClick={() => toggleGrupo(gId)}>
+                <div className="flex items-center justify-between px-5 py-4 cursor-pointer transition-colors" style={{}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(255,255,255,0.02)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background='transparent'} onClick={() => toggleGrupo(gId)}>
                   <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
                       <Sun size={16} className="text-yellow-500" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold">{g.usina?.nome || 'Sem Usina'}</p>
-                      <p className="text-xs text-muted-foreground">{g.faturas.length} fatura{g.faturas.length !== 1 ? 's' : ''}</p>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{g.usina?.nome || 'Sem Usina'}</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>{g.faturas.length} fatura{g.faturas.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 sm:gap-4">
                     <div className="text-right hidden sm:block">
-                      <p className="text-sm font-semibold">{totalKwh.toLocaleString('pt-BR')} kWh</p>
-                      <p className="text-xs text-muted-foreground">Total kWh</p>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-text1)"}}>{totalKwh.toLocaleString('pt-BR')} kWh</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>Total kWh</p>
                     </div>
                     <div className="text-right hidden sm:block">
-                      <p className="text-sm font-semibold text-green-500">{fmtMoeda(totalVal)}</p>
-                      <p className="text-xs text-muted-foreground">Total R$</p>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</p>
+                      <p className="text-xs" style={{color:"var(--hc-text3)"}}>Total R$</p>
                     </div>
                     <div className="hidden sm:flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/10 text-green-500">● {nPagas} PAGOS</span>
-                      {nPend > 0 && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-yellow-500/10 text-yellow-500">● {nPend} PENDENTES</span>}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{background:"rgba(80,200,120,0.1)",color:"#50c878"}}>● {nPagas} PAGOS</span>
+                      {nPend > 0 && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{background:"rgba(251,191,36,0.1)",color:"#fbbf24"}}>● {nPend} PENDENTES</span>}
                     </div>
                     <div className="sm:hidden text-right">
-                      <p className="text-sm font-semibold text-green-500">{fmtMoeda(totalVal)}</p>
-                      <p className="text-[10px] text-muted-foreground">{nPagas}p · {nPend}pend</p>
+                      <p className="text-sm font-semibold" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</p>
+                      <p className="text-[10px]" style={{color:"var(--hc-text3)"}}>{nPagas}p · {nPend}pend</p>
                     </div>
-                    {aberto ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
+                    {aberto ? <ChevronUp size={16} style={{color:"var(--hc-text3)"}} /> : <ChevronDown size={16} style={{color:"var(--hc-text3)"}} />}
                   </div>
                 </div>
 
                 {/* Tabela */}
                 {aberto && (
-                  <div className="border-t border-border overflow-x-auto">
+                  <div className="overflow-x-auto" style={{borderTop:"1px solid var(--hc-border)"}}>
                     <table className="w-full text-sm min-w-[700px]">
                       <thead>
-                        <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
-                          <th className="text-left px-4 py-2.5 font-medium">Cliente</th>
-                          <th className="text-left px-4 py-2.5 font-medium">UC</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Leitura</th>
-                          <th className="text-left px-4 py-2.5 font-medium">kWh</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Desconto</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Valor</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Vencimento</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Status</th>
-                          <th className="text-left px-4 py-2.5 font-medium">Ações</th>
+                        <tr style={{background:"var(--hc-row-alt)"}}>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Cliente</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>UC</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Leitura</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>kWh</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Desconto</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Valor</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Vencimento</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Status</th>
+                          <th className="text-left px-4 py-2.5 text-[9px] font-semibold uppercase tracking-widest" style={{color:"var(--hc-text3)"}}>Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -428,25 +428,25 @@ export default function Faturas() {
                           const st = statusConfig[f.status] || { label: f.status, cor: 'text-muted-foreground', bg: 'bg-muted', dot: 'bg-muted-foreground' }
                           const isPendente = f.status === 'pendente' || f.status === 'atrasada'
                           return (
-                            <tr key={f.id} className={cn('border-t border-border/50 hover:bg-muted/20 transition-colors', i % 2 === 0 ? '' : 'bg-muted/10')}>
+                            <tr key={f.id} className='transition-colors' style={{borderTop:'1px solid var(--hc-divider)',background:i%2===0?'transparent':'var(--hc-row-alt)'}} onMouseEnter={e=>(e.currentTarget as HTMLElement).style.background='rgba(80,200,120,0.03)'} onMouseLeave={e=>(e.currentTarget as HTMLElement).style.background=i%2===0?'transparent':'rgba(255,255,255,0.015)'}>
                               <td className="px-4 py-2.5">
                                 <div className="flex items-center gap-2">
-                                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary flex-shrink-0">
+                                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold flex-shrink-0" style={{background:"rgba(80,200,120,0.12)",color:"#50c878"}}>
                                     {(f.beneficiario?.cliente?.nome || '?').substring(0, 2).toUpperCase()}
                                   </div>
-                                  <span className="font-medium text-xs">{f.beneficiario?.cliente?.nome || '—'}</span>
+                                  <span className="font-medium text-xs" style={{color:"var(--hc-text1)"}}>{f.beneficiario?.cliente?.nome || '—'}</span>
                                 </div>
                               </td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{f.beneficiario?.uc_beneficiaria || '—'}</td>
-                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{fmtData(f.data_leitura)}</td>
-                              <td className="px-4 py-2.5 text-xs">{Number(f.kwh_alocado).toFixed(0)} kWh</td>
+                              <td className="px-4 py-2.5 font-mono text-xs" style={{color:"var(--hc-text2)"}}>{f.beneficiario?.uc_beneficiaria || '—'}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text2)"}}>{fmtData(f.data_leitura)}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text1)"}}>{Number(f.kwh_alocado).toFixed(0)} kWh</td>
                               <td className="px-4 py-2.5">
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
                                   ↓ {Number(f.desconto_percentual || 0).toFixed(0)}%
                                 </span>
                               </td>
-                              <td className="px-4 py-2.5 font-semibold text-xs">{fmtMoeda(f.valor)}</td>
-                              <td className="px-4 py-2.5 text-xs text-muted-foreground">{fmtData(f.data_vencimento)}</td>
+                              <td className="px-4 py-2.5 font-semibold text-xs" style={{color:"var(--hc-accent)"}}>{fmtMoeda(f.valor)}</td>
+                              <td className="px-4 py-2.5 text-xs" style={{color:"var(--hc-text2)"}}>{fmtData(f.data_vencimento)}</td>
                               <td className="px-4 py-2.5">
                                 <div className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium', st.bg, st.cor)}>
                                   <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
@@ -501,10 +501,10 @@ export default function Faturas() {
                         })}
                         {/* Subtotal */}
                         <tr className="border-t border-border/50 bg-muted/20">
-                          <td colSpan={3} className="px-4 py-2 text-xs text-muted-foreground">Subtotal do grupo</td>
-                          <td className="px-4 py-2 text-xs font-medium text-green-500">{totalKwh.toLocaleString('pt-BR')} kWh</td>
+                          <td colSpan={3} className="px-4 py-2 text-xs" style={{color:"var(--hc-text3)"}}>Subtotal do grupo</td>
+                          <td className="px-4 py-2 text-xs font-medium" style={{color:"var(--hc-accent)"}}>{totalKwh.toLocaleString('pt-BR')} kWh</td>
                           <td />
-                          <td className="px-4 py-2 text-xs font-medium text-green-500">{fmtMoeda(totalVal)}</td>
+                          <td className="px-4 py-2 text-xs font-medium" style={{color:"var(--hc-accent)"}}>{fmtMoeda(totalVal)}</td>
                           <td colSpan={3} />
                         </tr>
                       </tbody>
