@@ -93,7 +93,6 @@ export default function Dashboard() {
   const [faturas,     setFaturas]     = useState<Fatura[]>([])
   const [usinas,      setUsinas]      = useState<Usina[]>([])
   const [geracoes,    setGeracoes]    = useState<Geracao[]>([])
-  const [clientes,    setClientes]    = useState(0)
   const [loading,     setLoading]     = useState(true)
   const [filtroUsina, setFiltroUsina] = useState('all')
   const [filtroMes,   setFiltroMes]   = useState('all')
@@ -103,12 +102,10 @@ export default function Dashboard() {
     Promise.all([
       apiFetch<{ data: Fatura[] }>('/api/faturas'),
       apiFetch<{ data: Usina[] }>('/api/usinas'),
-      apiFetch<{ data: any[] }>('/api/clientes'),
       apiFetch<{ data: Geracao[] }>('/api/geracoes'),
-    ]).then(([f, u, c, g]) => {
+    ]).then(([f, u, g]) => {
       setFaturas(f.data || [])
       setUsinas(u.data || [])
-      setClientes(c.data?.length || 0)
       setGeracoes(g.data || [])
     }).finally(() => setLoading(false))
   }, [])
@@ -121,14 +118,19 @@ export default function Dashboard() {
     return matchUsina && matchMes && matchAno
   })
 
+  const gs = geracoes.filter(g =>
+  filtroUsina === 'all' || g.usina?.nome === filtroUsina
+)
+
   const pendentes = fs.filter(f => f.status === 'pendente')
   const pagas     = fs.filter(f => f.status === 'paga')
   const atrasadas = fs.filter(f => f.status === 'atrasada')
 
   const valorPendente = [...pendentes, ...atrasadas].reduce((a, f) => a + Number(f.valor), 0)
-  const kwh_total     = geracoes.reduce((a, g) => a + Number(g.energia_gerada_kwh || 0), 0)
-  const saldo_total   = geracoes.reduce((a, g) => a + Number(g.saldo_disponivel || 0), 0)
+  const kwh_total   = gs.reduce((a, g) => a + Number(g.energia_gerada_kwh || 0), 0)
+  const saldo_total = gs.reduce((a, g) => a + Number(g.saldo_disponivel || 0), 0)
   const kwh_faturado  = fs.reduce((a, f) => a + Number(f.kwh_alocado || 0), 0)
+  const clientesFiltrados = new Set(fs.map(f => f.beneficiario?.cliente?.nome).filter(Boolean)).size
 
   const ultimasFaturas = [...fs]
     .sort((a, b) => new Date(b.competencia).getTime() - new Date(a.competencia).getTime())
@@ -136,12 +138,12 @@ export default function Dashboard() {
 
   // Dados para gráfico de produção mensal
   const geracaoPorComp: Record<string, { comp: string; geracao: number; compensacao: number }> = {}
-  geracoes.forEach(g => {
+  gs.forEach(g => {
     const comp = fmtComp(g.competencia)
     if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
     geracaoPorComp[comp].geracao += Number(g.energia_gerada_kwh || 0)
   })
-  faturas.forEach(f => {
+  fs.forEach(f => {
     const comp = fmtComp(f.competencia)
     if (!geracaoPorComp[comp]) geracaoPorComp[comp] = { comp, geracao: 0, compensacao: 0 }
     geracaoPorComp[comp].compensacao += Number(f.kwh_alocado || 0)
@@ -153,7 +155,7 @@ export default function Dashboard() {
 
   // Dados para gráfico de receita
   const receitaPorComp: Record<string, { comp: string; realizado: number; projecao: number }> = {}
-  faturas.forEach(f => {
+  fs.forEach(f => {
     const comp = fmtComp(f.competencia)
     if (!receitaPorComp[comp]) receitaPorComp[comp] = { comp, realizado: 0, projecao: 0 }
     receitaPorComp[comp].projecao += Number(f.valor || 0)
@@ -247,7 +249,7 @@ export default function Dashboard() {
           {[
             { label: 'Total a Receber', valor: fmtMoeda(valorPendente), sub: `${pendentes.length} faturas pendentes`, icon: FileText,    cor: 'text-orange-500', bg: 'bg-orange-500/10' },
             { label: 'Faturas Pagas',   valor: pagas.length,            sub: 'este período',                          icon: CheckCircle, cor: 'text-green-500',  bg: 'bg-green-500/10' },
-            { label: 'Clientes Ativos', valor: clientes,                sub: 'beneficiários',                         icon: Users,       cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
+            { label: 'Clientes Ativos', valor: clientesFiltrados,                sub: 'beneficiários',                         icon: Users,       cor: 'text-blue-500',   bg: 'bg-blue-500/10' },
             { label: 'Em Atraso',       valor: atrasadas.length,        sub: 'faturas vencidas',                      icon: AlertCircle, cor: 'text-red-500',    bg: 'bg-red-500/10' },
           ].map(k => {
             const Icon = k.icon

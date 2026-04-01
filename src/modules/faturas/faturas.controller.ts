@@ -24,6 +24,7 @@ router.get('/', async (req: Request, res: Response) => {
       .createQueryBuilder('f')
       .leftJoinAndSelect('f.beneficiario', 'beneficiario')
       .leftJoinAndSelect('beneficiario.cliente', 'cliente')
+      .leftJoinAndSelect('beneficiario.usina', 'usina')
       .orderBy('f.data_vencimento', 'ASC');
     if (status) query.where('f.status = :status', { status });
     const data = await query.getMany();
