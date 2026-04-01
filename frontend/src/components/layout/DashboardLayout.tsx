@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './Sidebar'
-import { Menu, X } from 'lucide-react'
+import { Menu } from 'lucide-react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarAberta, setSidebarAberta] = useState(false)
