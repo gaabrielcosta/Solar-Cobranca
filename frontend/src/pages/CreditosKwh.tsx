@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/hooks/useApi'
-import { Zap, DollarSign, TrendingUp, Users } from 'lucide-react'
+import { Zap, DollarSign, TrendingUp, Users, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface Credito {
   id: string
@@ -28,24 +29,43 @@ function fmtComp(d: string) {
 }
 
 export default function CreditosKwh() {
-  const [creditos, setCreditos] = useState<Credito[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [tarifa, setTarifa]     = useState(0.75)
-  const [tarifaInput, setTarifaInput] = useState('0.7500')
+  const [creditos,     setCreditos]     = useState<Credito[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [tarifa,       setTarifa]       = useState(0.75)
+  const [tarifaInput,  setTarifaInput]  = useState('0.7500')
+  const [recalculando, setRecalculando] = useState(false)
+
+  async function carregar() {
+    const r = await apiFetch<{ data: Credito[] }>('/api/creditos')
+    setCreditos(r.data || [])
+  }
+
+  async function recalcularCreditos() {
+    setRecalculando(true)
+    try {
+      const hoje = new Date()
+      const comp = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`
+      await apiFetch('/api/creditos/recalcular', {
+        method: 'POST',
+        body: JSON.stringify({ competencia: comp }),
+      })
+      await carregar()
+    } finally {
+      setRecalculando(false)
+    }
+  }
 
   useEffect(() => {
-    apiFetch<{ data: Credito[] }>('/api/creditos')
-      .then(r => setCreditos(r.data || []))
-      .finally(() => setLoading(false))
+    carregar().finally(() => setLoading(false))
   }, [])
 
   if (loading) return <div className="text-muted-foreground text-sm p-6">Carregando...</div>
 
-  const totalKwh     = creditos.reduce((a, c) => a + Number(c.saldo_atual || 0), 0)
+  const totalKwh      = creditos.reduce((a, c) => a + Number(c.saldo_atual || 0), 0)
   const valorEstimado = totalKwh * tarifa
-  const maiorSaldo   = creditos.reduce((a, c) => Number(c.saldo_atual) > Number(a.saldo_atual) ? c : a, creditos[0] || {} as Credito)
-  const comSaldo     = creditos.filter(c => Number(c.saldo_atual) > 0).length
-  const maxSaldo     = Math.max(...creditos.map(c => Number(c.saldo_atual)), 1)
+  const maiorSaldo    = creditos.reduce((a, c) => Number(c.saldo_atual) > Number(a.saldo_atual) ? c : a, creditos[0] || {} as Credito)
+  const comSaldo      = creditos.filter(c => Number(c.saldo_atual) > 0).length
+  const maxSaldo      = Math.max(...creditos.map(c => Number(c.saldo_atual)), 1)
 
   return (
     <div className="flex flex-col gap-6">
@@ -54,15 +74,19 @@ export default function CreditosKwh() {
           <h1 className="text-2xl font-semibold">Créditos kWh</h1>
           <p className="text-muted-foreground text-sm mt-1">Saldo de energia acumulado por UC</p>
         </div>
+        <Button variant="outline" onClick={recalcularCreditos} disabled={recalculando}>
+          <RefreshCw size={16} className={recalculando ? 'animate-spin' : ''} />
+          {recalculando ? 'Recalculando...' : 'Recalcular'}
+        </Button>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Total Acumulado',    valor: `${totalKwh.toLocaleString('pt-BR')} kWh`, sub: 'saldo Energisa dos clientes',         icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  border: 'border-green-500/20' },
+          { label: 'Total Acumulado',    valor: `${totalKwh.toLocaleString('pt-BR')} kWh`, sub: 'saldo Energisa dos clientes',            icon: Zap,        cor: 'text-green-500',  bg: 'bg-green-500/10',  border: 'border-green-500/20' },
           { label: 'Valor Estimado',     valor: fmtMoeda(valorEstimado),                   sub: `pela tarifa R$ ${tarifa.toFixed(4)}/kWh`, icon: DollarSign, cor: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/20' },
           { label: 'Maior Saldo',        valor: `${Number(maiorSaldo?.saldo_atual || 0).toLocaleString('pt-BR')} kWh`, sub: maiorSaldo?.beneficiario?.cliente?.nome || '—', icon: TrendingUp, cor: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-          { label: 'Clientes com Saldo', valor: comSaldo,                                  sub: 'UCs com crédito > 0',                icon: Users,      cor: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+          { label: 'Clientes com Saldo', valor: comSaldo,                                  sub: 'UCs com crédito > 0',                    icon: Users,      cor: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
         ].map(k => {
           const Icon = k.icon
           return (
@@ -129,7 +153,7 @@ export default function CreditosKwh() {
                 <th className="text-left pb-3 pr-4 text-xs font-medium">UC</th>
                 <th className="text-left pb-3 pr-4 text-xs font-medium">Cliente</th>
                 <th className="text-left pb-3 pr-4 text-xs font-medium">Compensado</th>
-                <th className="text-left pb-3 pr-4 text-xs font-medium">Saldo</th>
+                <th className="text-left pb-3 pr-8 text-xs font-medium w-64">Saldo</th>
                 <th className="text-left pb-3 pl-4 text-xs font-medium min-w-[100px]">R$</th>
               </tr>
             </thead>
@@ -157,16 +181,16 @@ export default function CreditosKwh() {
                       <span className="text-xs text-green-500 font-medium">+{comp.toLocaleString('pt-BR')}</span>
                       {cons > 0 && <span className="text-xs text-red-400 ml-1">/ -{cons.toLocaleString('pt-BR')}</span>}
                     </td>
-                      <td className="py-3 pr-8">
-                        <div className="flex items-center gap-3">
-                          <div className="w-32 h-1.5 bg-muted rounded-full overflow-hidden flex-shrink-0">
-                            <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
-                          <span className={cn('text-xs font-bold whitespace-nowrap', saldo > 0 ? 'text-green-500' : 'text-muted-foreground')}>
-                            {saldo.toLocaleString('pt-BR')} kWh
-                          </span>
+                    <td className="py-3 pr-8">
+                      <div className="flex items-center gap-3">
+                        <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden flex-shrink-0">
+                          <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
                         </div>
-                      </td>
+                        <span className={cn('text-xs font-bold whitespace-nowrap ml-2', saldo > 0 ? 'text-green-500' : 'text-muted-foreground')}>
+                          {saldo.toLocaleString('pt-BR')} kWh
+                        </span>
+                      </div>
+                    </td>
                     <td className="py-3 pl-4 whitespace-nowrap min-w-[100px]">
                       <span className="text-sm font-semibold text-yellow-500">{fmtMoeda(valor)}</span>
                     </td>

@@ -405,6 +405,23 @@ router.patch('/:id/valor', async (req: Request, res: Response) => {
     fatura.valor_desconto      = valor_desconto;
 
     await faturaRepo.save(fatura);
+
+    // Recalcula crédito kWh após edição
+    try {
+      const faturaCompleta = await faturaRepo.findOne({
+        where: { id: fatura.id },
+        relations: ['beneficiario'],
+      });
+      if (faturaCompleta?.beneficiario && faturaCompleta.competencia) {
+        const { creditoUCService } = await import('../usinas/credito-uc.service');
+        const compDate = new Date(faturaCompleta.competencia);
+        const comp = `${compDate.getFullYear()}-${String(compDate.getMonth() + 1).padStart(2, '0')}-01`;
+        await creditoUCService.recalcularCredito(faturaCompleta.beneficiario.id, comp);
+      }
+    } catch (e) {
+      console.warn('[CREDITO] Erro ao recalcular após edição:', e);
+    }
+
     res.json({ sucesso: true, valor: novoValor });
   } catch (err: any) {
     res.status(500).json({ sucesso: false, erro: err.message });
@@ -503,12 +520,14 @@ router.get('/:id/pdf', async (req: Request, res: Response) => {
       tarifa_kwh:           Number(fatura.tarifa_kwh),
       tarifa_b1:            Number((fatura as any).tarifa_b1 || 0),
       kwh_consumo_energisa: Number(fatura.kwh_consumo_energisa || 0),
-      desconto_pct:         Number(b.desconto_percentual),
-      cip_municipal:        Number(fatura.cip_municipal || 0),
-      outros_energisa:      Number(fatura.outros_energisa || 0),
-      total_energisa:       Number(fatura.total_fatura_energisa || 0),
-      saldo_credito:        Number(fatura.saldo_credito || 0),
-      pix_copia_cola:       process.env.PIX_CHAVE || '',
+      desconto_pct:                Number(b.desconto_percentual),
+      cip_municipal:               Number(fatura.cip_municipal || 0),
+      outros_energisa:             Number(fatura.outros_energisa || 0),
+      total_energisa:              Number(fatura.total_fatura_energisa || 0),
+      saldo_credito:               Number(fatura.saldo_credito || 0),
+      pix_copia_cola:              process.env.PIX_CHAVE || '',
+      valor_final_override:        Number(fatura.valor || 0),
+      valor_sem_desconto_override: Number((fatura as any).valor_sem_desconto || 0),
     };
 
     const pdfBuffer = await gerarFaturaPDF(dados);

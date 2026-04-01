@@ -159,13 +159,19 @@ export default function Faturas() {
     if (!faturaSelecionada) return
     setLoadingEditar(true)
     try {
+      const kwh      = parseFloat(formEditar.kwh_alocado) || 0
+      const tarifa   = parseFloat(formEditar.tarifa_kwh) || 0
+      const desc     = parseFloat(formEditar.desconto_percentual) || 0
+      const bruto    = kwh * tarifa
+      const calculado = parseFloat((bruto - bruto * desc / 100).toFixed(2))
+      const valorFinal = formEditar.valor ? parseFloat(formEditar.valor) : calculado
       await apiFetch(`/api/faturas/${faturaSelecionada.id}/valor`, {
         method: 'PATCH',
         body: JSON.stringify({
-          valor: Number(formEditar.valor),
-          kwh_alocado: Number(formEditar.kwh_alocado),
-          tarifa_kwh: Number(formEditar.tarifa_kwh),
-          desconto_percentual: Number(formEditar.desconto_percentual),
+          valor: valorFinal,
+          kwh_alocado: kwh,
+          tarifa_kwh: tarifa,
+          desconto_percentual: desc,
         }),
       })
       setModalEditar(false)
@@ -549,6 +555,9 @@ export default function Faturas() {
         <DialogContent>
           <DialogHeader><DialogTitle>Editar valor da fatura</DialogTitle></DialogHeader>
           <div className="flex flex-col gap-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              Altere o valor cobrado desta fatura. Os demais campos (kWh, tarifa, desconto) não serão afetados.
+            </p>
             <div>
               <p className="text-sm text-muted-foreground">Cliente</p>
               <p className="font-medium">{faturaSelecionada?.beneficiario?.cliente?.nome}</p>
@@ -556,27 +565,51 @@ export default function Faturas() {
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label>kWh alocado</Label>
-                <Input type="number" value={formEditar.kwh_alocado} onChange={e => setFormEditar(p => ({ ...p, kwh_alocado: e.target.value }))} />
+                <Input type="number" value={formEditar.kwh_alocado} onChange={e => setFormEditar(p => ({ ...p, kwh_alocado: e.target.value, valor: '' }))} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Tarifa kWh</Label>
-                <Input type="number" step="0.000001" value={formEditar.tarifa_kwh} onChange={e => setFormEditar(p => ({ ...p, tarifa_kwh: e.target.value }))} />
+                <Label>Tarifa (R$/kWh)</Label>
+                <Input type="number" step="0.000001" value={formEditar.tarifa_kwh} onChange={e => setFormEditar(p => ({ ...p, tarifa_kwh: e.target.value, valor: '' }))} />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1.5">
-                <Label>Desconto (%)</Label>
-                <Input type="number" min={0} max={100} value={formEditar.desconto_percentual} onChange={e => setFormEditar(p => ({ ...p, desconto_percentual: e.target.value }))} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>Valor final (R$)</Label>
-                <Input type="number" step="0.01" value={formEditar.valor} onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))} />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Desconto (%)</Label>
+              <Input type="number" min={0} max={100} value={formEditar.desconto_percentual} onChange={e => setFormEditar(p => ({ ...p, desconto_percentual: e.target.value, valor: '' }))} />
+            </div>
+
+            {/* Preview calculado ao vivo */}
+            {(() => {
+              const kwh     = parseFloat(formEditar.kwh_alocado) || 0
+              const tarifa  = parseFloat(formEditar.tarifa_kwh) || 0
+              const desc    = parseFloat(formEditar.desconto_percentual) || 0
+              const bruto   = kwh * tarifa
+              const calculado = parseFloat((bruto - bruto * desc / 100).toFixed(2))
+              return (
+                <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-muted/50 border border-border">
+                  <span className="text-sm text-muted-foreground">Valor calculado</span>
+                  <span className="text-lg font-bold text-green-500">
+                    {calculado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </span>
+                </div>
+              )
+            })()}
+
+            <div className="flex flex-col gap-1.5">
+              <Label>Ou informe o valor manualmente (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={formEditar.valor}
+                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))}
+                placeholder="Deixe em branco para usar o valor calculado"
+              />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalEditar(false)}>Cancelar</Button>
-            <Button onClick={salvarEdicao} disabled={loadingEditar}>{loadingEditar ? 'Salvando...' : 'Salvar alterações'}</Button>
+            <Button onClick={salvarEdicao} disabled={loadingEditar}>
+              {loadingEditar ? 'Salvando...' : 'Salvar'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

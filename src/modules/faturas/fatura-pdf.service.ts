@@ -34,6 +34,10 @@ export interface DadosFaturaPDF {
 
   // PIX (opcional)
   pix_copia_cola?:       string;
+
+  // Overrides — usa o valor salvo no banco em vez de recalcular
+  valor_final_override?:        number;
+  valor_sem_desconto_override?: number;
 }
 
 // ─────────────────────────────────────────────
@@ -105,10 +109,14 @@ function renderizarHTML(d: DadosFaturaPDF): string {
   const valorFioB         = parseFloat((d.kwh_compensado * tarifaFioB).toFixed(2));
   const valorIntegral     = parseFloat((valorConsumoBruto + d.cip_municipal + d.outros_energisa).toFixed(2));
 
-  // Cálculos ACELIVRE — desconto sobre tarifa GDII
-  const valorSemDesconto = parseFloat((d.kwh_compensado * d.tarifa_kwh).toFixed(2));
-  const valorDesconto    = parseFloat((valorSemDesconto * d.desconto_pct / 100).toFixed(2));
-  const valorFinal       = parseFloat((valorSemDesconto - valorDesconto).toFixed(2));
+  // Cálculos ACELIVRE — usa valor do banco se disponível, senão recalcula
+  const valorSemDesconto = d.valor_sem_desconto_override && d.valor_sem_desconto_override > 0
+    ? d.valor_sem_desconto_override
+    : parseFloat((d.kwh_compensado * d.tarifa_kwh).toFixed(2));
+  const valorFinal = d.valor_final_override && d.valor_final_override > 0
+    ? d.valor_final_override
+    : parseFloat((valorSemDesconto - valorSemDesconto * d.desconto_pct / 100).toFixed(2));
+  const valorDesconto = parseFloat((valorSemDesconto - valorFinal).toFixed(2));
 
   // Linha Fio B (condicional)
   const fioBRow = temFioB
