@@ -338,7 +338,7 @@ export default function Clientes() {
           <h1 className="text-2xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground text-sm mt-1">{totalClientes} clientes cadastrados</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           <input
             ref={csvRef}
             type="file"
@@ -391,7 +391,7 @@ export default function Clientes() {
                     <div>
                       <p className="text-sm font-semibold">{g.usina?.nome || 'Sem Usina Atribuída'}</p>
                       {g.usina && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
+                        <p className="text-xs text-muted-foreground mt-0.5 hidden sm:block">
                           {g.usina.distribuidora} · UC {g.usina.uc_geradora} · {Number(g.usina.potencia_kwp).toFixed(1)} kWp · {g.usina.cidade}/{g.usina.estado}
                         </p>
                       )}
@@ -405,7 +405,7 @@ export default function Clientes() {
                       <p className="text-xs text-muted-foreground">{g.beneficiarios.length} cliente{g.beneficiarios.length !== 1 ? 's' : ''}</p>
                       {g.usina && <p className="text-xs text-muted-foreground">{descontoMedio.toFixed(1)}% desc. médio</p>}
                     </div>
-                    <div className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium', g.usina ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500')}>
+                    <div className={cn('hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium', g.usina ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500')}>
                       <div className={cn('w-1.5 h-1.5 rounded-full', g.usina ? 'bg-green-500' : 'bg-yellow-500')} />
                       {g.usina ? 'Ativa' : 'Pendente vínculo'}
                     </div>
@@ -415,8 +415,8 @@ export default function Clientes() {
 
                 {/* Tabela de clientes */}
                 {aberto && (
-                  <div className="border-t border-border">
-                    <table className="w-full text-sm">
+                  <div className="border-t border-border overflow-x-auto">
+                    <table className="w-full text-sm min-w-[700px]">
                       <thead>
                         <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
                           <th className="text-left px-5 py-2.5 font-medium">Nome</th>
@@ -516,7 +516,7 @@ export default function Clientes() {
 
       {/* Modal histórico cliente */}
       <Dialog open={modalHistorico} onOpenChange={setModalHistorico}>
-        <DialogContent className="!max-w-2xl">
+        <DialogContent className="!max-w-2xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Histórico · {clienteHistorico?.nome}</DialogTitle>
           </DialogHeader>
@@ -532,7 +532,7 @@ export default function Clientes() {
 
             return (
               <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {[
                     { label: 'Total recebido', valor: Number(totalRecebido).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), icon: DollarSign, cor: 'text-green-500', bg: 'bg-green-500/10' },
                     { label: 'Em aberto',      valor: Number(emAberto).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),      icon: TrendingUp,  cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
@@ -557,8 +557,8 @@ export default function Clientes() {
                 {historicoFaturas.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-4">Nenhuma fatura encontrada</p>
                 ) : (
-                  <div className="rounded-lg border border-border overflow-hidden">
-                    <table className="w-full text-sm">
+                  <div className="rounded-lg border border-border overflow-x-auto -mx-1">
+                    <table className="w-full text-sm min-w-[480px]">
                       <thead>
                         <tr className="bg-muted text-muted-foreground text-xs">
                           <th className="text-left px-4 py-2.5 font-medium">Leitura</th>

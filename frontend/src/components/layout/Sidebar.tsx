@@ -12,6 +12,7 @@ import {
   LogOut,
   Upload,
   Zap,
+  X,
 } from 'lucide-react'
 import { useTheme } from '@/components/ThemeProvider'
 
@@ -47,7 +48,11 @@ const grupos = [
   },
 ]
 
-export default function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void
+}
+
+export default function Sidebar({ onClose }: SidebarProps) {
   const navigate  = useNavigate()
   const location  = useLocation()
   const { theme, toggleTheme } = useTheme()
@@ -62,6 +67,11 @@ export default function Sidebar() {
     return location.pathname === base || location.pathname.startsWith(base + '/')
   }
 
+  function navegar(path: string) {
+    navigate(path.split('?')[0])
+    onClose?.()
+  }
+
   return (
     <aside className="flex flex-col w-52 min-h-screen bg-card border-r border-border">
       {/* Logo */}
@@ -69,10 +79,19 @@ export default function Sidebar() {
         <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
           <Zap size={16} className="text-primary-foreground" />
         </div>
-        <div>
+        <div className="flex-1">
           <p className="text-sm font-bold leading-none">ACELIVRE</p>
           <p className="text-[10px] text-muted-foreground mt-0.5">Backoffice v1.0</p>
         </div>
+        {/* Botão fechar — só aparece em mobile */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="lg:hidden p-1 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+          >
+            <X size={16} />
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -88,7 +107,7 @@ export default function Sidebar() {
                 return (
                   <button
                     key={path}
-                    onClick={() => navigate(path.split('?')[0])}
+                    onClick={() => navegar(path)}
                     className={cn(
                       'w-full flex items-center gap-3 px-3 h-9 rounded-lg text-sm transition-colors text-left',
                       ativo

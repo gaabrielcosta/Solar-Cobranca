@@ -108,7 +108,7 @@ export default function Analytics() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
-                <p className={`text-2xl font-bold mt-1 ${k.cor}`}>{k.valor}</p>
+                <p className={`text-lg sm:text-2xl font-bold mt-1 leading-tight ${k.cor}`}>{k.valor}</p>
                 <p className="text-xs text-muted-foreground mt-1">{k.sub}</p>
               </div>
             </div>

@@ -96,7 +96,7 @@ export default function CreditosKwh() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
-                <p className={`text-2xl font-bold mt-0.5 ${k.cor}`}>{k.valor}</p>
+                <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
                 <p className="text-xs text-muted-foreground mt-0.5 truncate">{k.sub}</p>
               </div>
             </div>
@@ -111,7 +111,7 @@ export default function CreditosKwh() {
             <h2 className="text-sm font-semibold">Simulador de Valor</h2>
             <p className="text-xs text-muted-foreground mt-0.5">Altere a tarifa para simular o valor financeiro dos créditos acumulados em R$</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs text-muted-foreground">Tarifa kWh (R$):</span>
             <input
               type="number"
@@ -146,7 +146,7 @@ export default function CreditosKwh() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-muted-foreground border-b border-border">
                 <th className="text-left pb-3 pr-4 text-xs font-medium w-8">#</th>
@@ -182,7 +182,7 @@ export default function CreditosKwh() {
                       {cons > 0 && <span className="text-xs text-red-400 ml-1">/ -{cons.toLocaleString('pt-BR')}</span>}
                     </td>
                     <td className="py-3 pr-8">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden flex-shrink-0">
                           <div className="h-full bg-green-500 rounded-full" style={{ width: `${pct}%` }} />
                         </div>

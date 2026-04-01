@@ -194,7 +194,7 @@ export default function Usinas() {
 
       {subTab === 'usinas' && (
         <>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: 'Total de usinas', valor: usinas.length, sub: 'plantas cadastradas', icon: Sun, cor: 'text-yellow-500', bg: 'bg-yellow-500/10' },
               { label: 'Potência total', valor: `${potenciaTotal.toFixed(1)} kWp`, sub: 'capacidade instalada', icon: Zap, cor: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -208,7 +208,7 @@ export default function Usinas() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">{k.label}</p>
-                    <p className={`text-2xl font-bold ${k.cor}`}>{k.valor}</p>
+                    <p className={`text-lg sm:text-2xl font-bold leading-tight ${k.cor}`}>{k.valor}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
                   </div>
                 </div>
@@ -229,8 +229,8 @@ export default function Usinas() {
           {loading ? (
             <div className="text-muted-foreground text-sm">Carregando...</div>
           ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[500px]">
                 <thead>
                   <tr className="bg-muted text-muted-foreground">
                     <th className="text-left px-4 py-3 font-medium">Nome</th>
@@ -301,8 +301,8 @@ export default function Usinas() {
           ) : geracoes.length === 0 ? (
             <p className="text-sm text-muted-foreground py-12 text-center">Nenhuma geração registrada</p>
           ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="rounded-lg border border-border overflow-x-auto">
+              <table className="w-full text-sm min-w-[400px]">
                 <thead>
                   <tr className="bg-muted text-muted-foreground">
                     <th className="text-left px-4 py-3 font-medium">Competência</th>
@@ -350,7 +350,7 @@ export default function Usinas() {
               <Label>Distribuidora *</Label>
               <Input placeholder="Energisa MS" value={form.distribuidora} onChange={e => setForm(p => ({ ...p, distribuidora: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="flex flex-col gap-1.5 col-span-2">
                 <Label>Cidade</Label>
                 <Input placeholder="Bataguassu" value={form.cidade} onChange={e => setForm(p => ({ ...p, cidade: e.target.value }))} />
@@ -382,7 +382,7 @@ export default function Usinas() {
 
       {/* Modal beneficiários */}
       <Dialog open={modalBenef} onOpenChange={setModalBenef}>
-        <DialogContent className="!max-w-3xl">
+        <DialogContent className="!max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Beneficiários — {usinaSelecionada?.nome}</DialogTitle>
           </DialogHeader>
@@ -392,8 +392,8 @@ export default function Usinas() {
             ) : beneficiarios.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">Nenhum beneficiário cadastrado</p>
             ) : (
-              <div className="rounded-lg border border-border overflow-auto max-h-[70vh]">
-                <table className="w-full text-sm">
+              <div className="rounded-lg border border-border overflow-x-auto max-h-[60vh]">
+                <table className="w-full text-sm min-w-[500px]">
                   <thead>
                     <tr className="bg-muted text-muted-foreground whitespace-nowrap">
                       <th className="text-left px-4 py-3 font-medium">Cliente</th>

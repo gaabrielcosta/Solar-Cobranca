@@ -340,7 +340,7 @@ export default function Faturas() {
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total',     valor: total,     cor: 'text-foreground',  bg: 'bg-muted/50',      border: 'border-border' },
           { label: 'Pendentes', valor: pendentes, cor: 'text-yellow-500',  bg: 'bg-yellow-500/5',  border: 'border-yellow-500/20' },
@@ -349,7 +349,7 @@ export default function Faturas() {
         ].map(card => (
           <div key={card.label} className={`rounded-xl border ${card.border} ${card.bg} p-4`}>
             <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{card.label}</p>
-            <p className={cn('text-3xl font-bold', card.cor)}>{card.valor}</p>
+            <p className={cn('text-2xl sm:text-3xl font-bold', card.cor)}>{card.valor}</p>
           </div>
         ))}
       </div>
@@ -385,18 +385,22 @@ export default function Faturas() {
                       <p className="text-xs text-muted-foreground">{g.faturas.length} fatura{g.faturas.length !== 1 ? 's' : ''}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
+                  <div className="flex items-center gap-2 sm:gap-4">
+                    <div className="text-right hidden sm:block">
                       <p className="text-sm font-semibold">{totalKwh.toLocaleString('pt-BR')} kWh</p>
                       <p className="text-xs text-muted-foreground">Total kWh</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right hidden sm:block">
                       <p className="text-sm font-semibold text-green-500">{fmtMoeda(totalVal)}</p>
                       <p className="text-xs text-muted-foreground">Total R$</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="hidden sm:flex items-center gap-2">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/10 text-green-500">● {nPagas} PAGOS</span>
                       {nPend > 0 && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-yellow-500/10 text-yellow-500">● {nPend} PENDENTES</span>}
+                    </div>
+                    <div className="sm:hidden text-right">
+                      <p className="text-sm font-semibold text-green-500">{fmtMoeda(totalVal)}</p>
+                      <p className="text-[10px] text-muted-foreground">{nPagas}p · {nPend}pend</p>
                     </div>
                     {aberto ? <ChevronUp size={16} className="text-muted-foreground" /> : <ChevronDown size={16} className="text-muted-foreground" />}
                   </div>
@@ -404,8 +408,8 @@ export default function Faturas() {
 
                 {/* Tabela */}
                 {aberto && (
-                  <div className="border-t border-border">
-                    <table className="w-full text-sm">
+                  <div className="border-t border-border overflow-x-auto">
+                    <table className="w-full text-sm min-w-[700px]">
                       <thead>
                         <tr className="bg-muted/50 text-muted-foreground text-xs uppercase tracking-wide">
                           <th className="text-left px-4 py-2.5 font-medium">Cliente</th>

@@ -179,7 +179,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="text-muted-foreground text-sm mt-1">Visão geral do sistema</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
           <Select value={filtroUsina} onValueChange={setFiltroUsina}>
             <SelectTrigger className="w-44 h-8 text-xs"><SelectValue placeholder="Todas as usinas" /></SelectTrigger>
             <SelectContent>
@@ -230,7 +230,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
-                  <p className={`text-2xl font-bold mt-0.5 ${k.cor}`}>{k.valor}</p>
+                  <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
                 </div>
                 <div className="h-1 bg-muted rounded-full overflow-hidden">
@@ -260,7 +260,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">{k.label}</p>
-                  <p className={`text-2xl font-bold mt-0.5 ${k.cor}`}>{k.valor}</p>
+                  <p className={`text-lg sm:text-2xl font-bold mt-0.5 leading-tight ${k.cor}`}>{k.valor}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">{k.sub}</p>
                 </div>
               </div>
@@ -335,7 +335,8 @@ export default function Dashboard() {
             <h2 className="text-sm font-semibold">Últimas Cobranças</h2>
             <button onClick={() => navigate('/faturas')} className="text-xs text-primary hover:underline">Ver todas</button>
           </div>
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="text-muted-foreground border-b border-border">
                 <th className="text-left px-5 py-3 text-xs font-medium">Beneficiário</th>
@@ -358,7 +359,7 @@ export default function Dashboard() {
                         <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">
                           {(f.beneficiario?.cliente?.nome || '?').substring(0, 2).toUpperCase()}
                         </div>
-                        <span className="font-medium truncate max-w-[160px]">{f.beneficiario?.cliente?.nome || '—'}</span>
+                        <span className="font-medium truncate max-w-[80px] sm:max-w-[160px]">{f.beneficiario?.cliente?.nome || '—'}</span>
                       </div>
                     </td>
                     <td className="px-5 py-3 font-medium">{fmtMoeda(f.valor)}</td>
@@ -374,6 +375,7 @@ export default function Dashboard() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="rounded-xl border border-border bg-card">
