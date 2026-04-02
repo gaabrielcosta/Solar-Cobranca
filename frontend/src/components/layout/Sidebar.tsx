@@ -1,5 +1,4 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, BarChart2, Users, FileText, Sun, Moon,
   Bot, ClipboardList, LogOut, Upload, Zap, X,

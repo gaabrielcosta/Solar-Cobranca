@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Sidebar from './Sidebar'
-import { Menu, Search, Bell, AlertCircle, CheckCircle, X, Trash2, Users, FileText } from 'lucide-react'
+import { Menu, Search, Bell, AlertCircle, CheckCircle, X, Trash2, Users } from 'lucide-react'
 import { apiFetch } from '@/hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 
