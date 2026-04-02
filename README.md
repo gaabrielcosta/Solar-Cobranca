@@ -6,6 +6,34 @@ A ACELIVRE distribui energia solar gerada em usinas próprias para clientes bene
 
 ---
 
+## Screenshots
+
+### Login
+
+![Login](docs/screenshots/00.png)
+
+### Dashboard
+
+![Dashboard — modo escuro](docs/screenshots/01_dark.png)
+![Dashboard — modo claro](docs/screenshots/01_claro.png)
+
+### Faturas
+
+![Faturas — modo escuro](docs/screenshots/02_dark.png)
+![Faturas — modo claro](docs/screenshots/02_claro.png)
+
+### Clientes
+
+![Clientes — modo escuro](docs/screenshots/03_dark.png)
+![Clientes — modo claro](docs/screenshots/03_claro.png)
+
+### Analytics
+
+![Analytics — modo escuro](docs/screenshots/04_dark.png)
+![Analytics — modo claro](docs/screenshots/04_claro.png)
+
+---
+
 ## O problema que resolve
 
 Empresas de energia solar compartilhada recebem mensalmente uma fatura da distribuidora (Energisa MS) por UC beneficiária. Processar essas faturas manualmente — extrair os kWh compensados, calcular o valor de cada cliente, gerar a cobrança e notificar — é um trabalho repetitivo e suscetível a erros.
@@ -23,20 +51,22 @@ O Solar Cobrança automatiza esse fluxo completo.
 - **Relatórios mensais em PDF** — gerados via Puppeteer com dados consolidados por usina
 - **Bot WhatsApp** — régua de cobrança automática com avisos D-5, D0, D+1, D+3, D+7 e D+15 via Evolution API
 - **Resposta automática** — cliente responde "PAGUEI" e o sistema registra o pagamento
-- **Dashboard web** — interface de gestão com filtros, histórico e analytics
+- **Dashboard React** — interface moderna com tema claro/escuro, busca global, notificações em tempo real e analytics
 - **Autenticação JWT** — implementada sem bibliotecas externas, usando `crypto` nativo do Node.js
 
 ---
 
 ## Stack
 
+### Backend
+
 | Camada            | Tecnologia                  |
 | ----------------- | --------------------------- |
-| Runtime           | Node.js                     |
+| Runtime           | Node.js 18+                 |
 | Linguagem         | TypeScript                  |
 | Framework         | Express                     |
 | ORM               | TypeORM                     |
-| Banco de dados    | PostgreSQL                  |
+| Banco de dados    | PostgreSQL 14+              |
 | PDF (leitura)     | unpdf                       |
 | PDF (geração)     | Puppeteer                   |
 | PIX (extração QR) | pdfjs-dist + canvas + jsQR  |
@@ -45,23 +75,43 @@ O Solar Cobrança automatiza esse fluxo completo.
 | Documentação      | Swagger UI (OpenAPI 3.0)    |
 | Deploy            | Oracle Cloud (VM ARM) + PM2 |
 
+### Frontend
+
+| Camada      | Tecnologia           |
+| ----------- | -------------------- |
+| Framework   | React 19 + Vite      |
+| Linguagem   | TypeScript           |
+| Estilização | Tailwind CSS v4      |
+| Componentes | Shadcn/ui + Radix UI |
+| Gráficos    | Recharts             |
+| Roteamento  | React Router v7      |
+| Tema        | Modo claro/escuro    |
+
 ---
 
 ## Arquitetura
 
 ```
-src/
-├── main.ts                  # Entry point, Express, JWT, rotas
-├── swagger.ts               # Configuração OpenAPI
-├── database/
-│   └── data-source.ts       # Conexão TypeORM + PostgreSQL
-└── modules/
-    ├── faturas/             # Leitura de PDF, extração PIX, geração de faturas
-    ├── usinas/              # Usinas, beneficiários, rateio, créditos kWh
-    ├── clientes/            # Cadastro e importação de clientes
-    ├── bot/                 # Régua de cobrança, bot WhatsApp, webhooks
-    ├── logs/                # Auditoria de ações
-    └── pagamentos/          # Registro de pagamentos
+├── src/                         # Backend (Node.js + TypeScript)
+│   ├── main.ts                  # Entry point, Express, JWT, rotas
+│   ├── swagger.ts               # Configuração OpenAPI
+│   ├── database/
+│   │   └── data-source.ts       # Conexão TypeORM + PostgreSQL
+│   └── modules/
+│       ├── faturas/             # Leitura de PDF, extração PIX, geração de faturas
+│       ├── usinas/              # Usinas, beneficiários, rateio, créditos kWh
+│       ├── clientes/            # Cadastro e importação de clientes
+│       ├── bot/                 # Régua de cobrança, bot WhatsApp, webhooks
+│       ├── logs/                # Auditoria de ações
+│       └── pagamentos/          # Registro de pagamentos
+│
+└── frontend/                    # Frontend (React + Vite)
+    └── src/
+        ├── components/
+        │   └── layout/          # DashboardLayout, Sidebar, ThemeProvider
+        ├── pages/               # Dashboard, Faturas, Clientes, Usinas,
+        │                        # Analytics, CreditosKwh, Logs, Bot, Upload
+        └── hooks/               # useApi
 ```
 
 ---
@@ -107,13 +157,30 @@ PIX_CHAVE=
 npm run typeorm migration:run
 ```
 
-### Iniciar
+### Desenvolvimento
+
+Terminal 1 — backend:
 
 ```bash
 npm run dev
 ```
 
-Acesse `http://localhost:3000/dashboard.html`
+Terminal 2 — frontend (com hot reload):
+
+```bash
+cd frontend
+npm run dev
+```
+
+Acesse `http://localhost:5173`
+
+### Build de produção
+
+```bash
+npm run build:full
+```
+
+O frontend é compilado e servido pelo Express em `http://localhost:3000`.
 
 ### Documentação da API
 
@@ -129,7 +196,7 @@ http://localhost:3000/api/docs
 npm test
 ```
 
-Cobertura atual: leitura de fatura Energisa MS, extração de PIX, parsing de demonstrativo de compensação.
+38 testes passando. Cobertura: leitura de fatura Energisa MS, extração de PIX, parsing de demonstrativo de compensação, cálculo de créditos kWh e rateio entre beneficiários.
 
 ---
 
