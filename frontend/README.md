@@ -6,6 +6,34 @@ A ACELIVRE distribui energia solar gerada em usinas próprias para clientes bene
 
 ---
 
+## Screenshots
+
+### Login
+
+![Login](docs/screenshots/00.png)
+
+### Dashboard
+
+![Dashboard — modo escuro](docs/screenshots/01_dark.png)
+![Dashboard — modo claro](docs/screenshots/01_claro.png)
+
+### Faturas
+
+![Faturas — modo escuro](docs/screenshots/02_dark.png)
+![Faturas — modo claro](docs/screenshots/02_claro.png)
+
+### Clientes
+
+![Clientes — modo escuro](docs/screenshots/03_dark.png)
+![Clientes — modo claro](docs/screenshots/03_claro.png)
+
+### Analytics
+
+![Analytics — modo escuro](docs/screenshots/04_dark.png)
+![Analytics — modo claro](docs/screenshots/04_claro.png)
+
+---
+
 ## O problema que resolve
 
 Empresas de energia solar compartilhada recebem mensalmente uma fatura da distribuidora (Energisa MS) por UC beneficiária. Processar essas faturas manualmente — extrair os kWh compensados, calcular o valor de cada cliente, gerar a cobrança e notificar — é um trabalho repetitivo e suscetível a erros.
@@ -129,17 +157,18 @@ PIX_CHAVE=
 npm run typeorm migration:run
 ```
 
-### Iniciar backend
+### Desenvolvimento
+
+Terminal 1 — backend:
 
 ```bash
 npm run dev
 ```
 
-### Iniciar frontend
+Terminal 2 — frontend (com hot reload):
 
 ```bash
 cd frontend
-npm install
 npm run dev
 ```
 
@@ -148,11 +177,10 @@ Acesse `http://localhost:5173`
 ### Build de produção
 
 ```bash
-cd frontend
-npm run build
+npm run build:full
 ```
 
-O frontend é servido pelo próprio Express em produção via `dist/`.
+O frontend é compilado e servido pelo Express em `http://localhost:3000`.
 
 ### Documentação da API
 
@@ -168,7 +196,7 @@ http://localhost:3000/api/docs
 npm test
 ```
 
-Cobertura atual: leitura de fatura Energisa MS, extração de PIX, parsing de demonstrativo de compensação.
+38 testes passando. Cobertura: leitura de fatura Energisa MS, extração de PIX, parsing de demonstrativo de compensação, cálculo de créditos kWh e rateio entre beneficiários.
 
 ---
 
