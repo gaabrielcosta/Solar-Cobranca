@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-solar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-solar}
+      POSTGRES_DB: ${POSTGRES_DB:-solar_cobranca}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solar}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-solar}
+      DB_PASS: ${POSTGRES_PASSWORD:-solar}
+      DB_NAME: ${POSTGRES_DB:-solar_cobranca}
+      JWT_SECRET: ${JWT_SECRET:-solar_secret_docker}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      PORT: 3000
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-}
+      PIX_CHAVE: ${PIX_CHAVE:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+
+volumes:
+  postgres_data:
