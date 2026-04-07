@@ -62,11 +62,11 @@ O Solar Cobrança automatiza esse fluxo completo.
 
 | Camada            | Tecnologia                  |
 | ----------------- | --------------------------- |
-| Runtime           | Node.js 18+                 |
+| Runtime           | Node.js 20+                 |
 | Linguagem         | TypeScript                  |
 | Framework         | Express                     |
 | ORM               | TypeORM                     |
-| Banco de dados    | PostgreSQL 14+              |
+| Banco de dados    | PostgreSQL 16+              |
 | PDF (leitura)     | unpdf                       |
 | PDF (geração)     | Puppeteer                   |
 | PIX (extração QR) | pdfjs-dist + canvas + jsQR  |
@@ -116,12 +116,40 @@ O Solar Cobrança automatiza esse fluxo completo.
 
 ---
 
-## Como rodar localmente
+## How to run (Docker)
+
+**Requirements:** [Docker](https://www.docker.com/products/docker-desktop) and Docker Compose
+
+```bash
+git clone https://github.com/gaabrielcosta/Solar-Cobranca.git
+cd Solar-Cobranca
+cp .env.example .env
+docker-compose up
+```
+
+The app will be available at `http://localhost:3000`
+
+**Environment variables**
+
+Copy `.env.example` to `.env` and fill in the required values before running.
+
+| Variable             | Description                    | Required |
+| -------------------- | ------------------------------ | -------- |
+| `JWT_SECRET`         | Secret key for JWT signing     | Yes      |
+| `ADMIN_PASSWORD`     | Admin login password           | Yes      |
+| `EVOLUTION_API_URL`  | WhatsApp Evolution API URL     | No       |
+| `EVOLUTION_API_KEY`  | WhatsApp Evolution API key     | No       |
+| `EVOLUTION_INSTANCE` | WhatsApp instance name         | No       |
+| `PIX_CHAVE`          | PIX key for payment extraction | No       |
+
+---
+
+## Como rodar localmente (sem Docker)
 
 ### Pré-requisitos
 
-- Node.js 18+
-- PostgreSQL 14+
+- Node.js 20+
+- PostgreSQL 16+
 
 ### Instalação
 
@@ -133,10 +161,14 @@ npm install
 
 ### Configuração
 
-Cria um arquivo `.env` na raiz com:
+Copia `.env.example` para `.env` e preenche os valores:
 
 ```env
-DATABASE_URL=postgresql://usuario:senha@localhost:5432/solar_cobranca
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASS=sua_senha
+DB_NAME=solar_cobranca
 JWT_SECRET=sua_chave_secreta
 JWT_EXPIRES_IN=8h
 ADMIN_PASSWORD=sua_senha_admin
@@ -149,12 +181,6 @@ EVOLUTION_INSTANCE=
 
 # PIX (opcional)
 PIX_CHAVE=
-```
-
-### Banco de dados
-
-```bash
-npm run typeorm migration:run
 ```
 
 ### Desenvolvimento
