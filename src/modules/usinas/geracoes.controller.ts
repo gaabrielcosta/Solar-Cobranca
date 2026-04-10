@@ -10,7 +10,10 @@ const router = Router();
 // Listar todas as gerações
 router.get('/', async (req: Request, res: Response) => {
   try {
+    const where: any = {}
+    if (req.query.usina_id) where.usina = { id: String(req.query.usina_id) }
     const geracoes = await AppDataSource.getRepository(Geracao).find({
+      where,
       relations: ['usina'],
       order: { competencia: 'DESC' },
     });

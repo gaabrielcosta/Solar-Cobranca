@@ -28,7 +28,7 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "pdf-parse": "^2.4.5",
-    "pdfjs-dist": "^2.16.105",
+    "pdfjs-dist": "^3.11.174",
     "pg": "^8.18.0",
     "puppeteer": "^24.37.5",
     "reflect-metadata": "^0.2.2",
